@@ -1,4 +1,4 @@
-﻿name: CI
+name: CI
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
       - name: Install dependencies
         run: |
-          uv add --optional-group test
+          uv add --optional test pytest pytest-benchmark psutil
       - name: Build extension
         run: uvx maturin develop
       - name: Run pytest
@@ -60,7 +60,7 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Install Python dependencies
-        run: uv add --optional-group dev
+        run: uv add --optional dev ruff mypy
       - name: Run ruff check
         run: uvx ruff check .
       - name: Run ruff format check
