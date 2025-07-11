@@ -83,12 +83,10 @@ uv.lock
 *.tmp
 *.temp
 
-# Local development files
-RELEASE.md
-LICENSE
-.github/ISSUE_TEMPLATE/
-.github/pull_request_template.md
-.github/workflows/benchmark.yml
+# Local development files (remove items that should be committed)
+# RELEASE.md - keep this, it's important documentation
+# LICENSE - keep this, it's required
+# .github/ templates - keep these for project maintenance
 
 # Benchmark results
 *.benchmark
