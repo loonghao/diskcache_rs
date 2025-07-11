@@ -35,7 +35,7 @@ jobs:
       - name: Install built wheel
         if: matrix.target == 'x86_64'
         run: |
-          pip install diskcache_rs --no-index --find-links dist --force-reinstall
+          pip install diskcache_rs --find-links dist --force-reinstall
           python -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -183,7 +183,7 @@ jobs:
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - name: Install built wheel
         run: |
-          pip install diskcache_rs --no-index --find-links dist --force-reinstall
+          pip install diskcache_rs --find-links dist --force-reinstall
           python -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -209,7 +209,7 @@ jobs:
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - name: Install built wheel - x86_64
         run: |
-          pip install diskcache_rs --no-index --find-links dist --force-reinstall
+          pip install diskcache_rs --find-links dist --force-reinstall
           python -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Build wheels - universal2
         uses: PyO3/maturin-action@v1
@@ -219,7 +219,7 @@ jobs:
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - name: Install built wheel - universal2
         run: |
-          pip install diskcache_rs --no-index --find-links dist --force-reinstall
+          pip install diskcache_rs --find-links dist --force-reinstall
           python -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
