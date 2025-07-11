@@ -219,22 +219,38 @@ class Cache:
         except Exception:
             return 0
     
-    def pop(self, key: str, default: Any = None) -> Any:
+    def pop(self, key: str, default=None, expire_time: bool = False,
+            tag: bool = False, retry: bool = False):
         """
         Remove and return value for key
-        
+
         Args:
             key: Cache key
             default: Default value if key not found
-            
+            expire_time: Whether to return expire time (not supported)
+            tag: Whether to return tag (not supported)
+            retry: Whether to retry on failure (ignored)
+
         Returns:
-            Value that was stored or default
+            Value, or tuple with additional metadata if requested
         """
         try:
-            value = self.get(key, default)
-            self.delete(key)
+            value = self.get(key)
+            if value is None:
+                if expire_time or tag:
+                    return (default, None, None)
+                return default
+
+            # Remove the key
+            del self[key]
+
+            if expire_time or tag:
+                # Return tuple format: (value, expire_time, tag)
+                return (value, None, None)
             return value
         except Exception:
+            if expire_time or tag:
+                return (default, None, None)
             return default
     
     def stats(self, enable: bool = True, reset: bool = False) -> Dict[str, Any]:
@@ -270,7 +286,92 @@ class Cache:
             return self._cache.size()
         except Exception:
             return 0
-    
+
+    def add(self, key: str, value: Any, expire: Optional[float] = None,
+            read: bool = False, tag: Optional[str] = None, retry: bool = False) -> bool:
+        """
+        Add key to cache only if it doesn't already exist
+
+        Args:
+            key: Cache key
+            value: Value to store
+            expire: Expiration time (seconds from now, or timestamp)
+            read: Whether this is a read operation (ignored)
+            tag: Tag for the entry
+            retry: Whether to retry on failure (ignored)
+
+        Returns:
+            True if key was added, False if key already exists
+        """
+        if key in self:
+            return False
+        return self.set(key, value, expire, read, tag, retry)
+
+    def incr(self, key: str, delta: int = 1, default: int = 0, retry: bool = False) -> int:
+        """
+        Increment value for key by delta
+
+        Args:
+            key: Cache key
+            delta: Amount to increment by
+            default: Default value if key doesn't exist
+            retry: Whether to retry on failure (ignored)
+
+        Returns:
+            New value after increment
+        """
+        try:
+            current = self.get(key)
+            if current is None:
+                new_value = default + delta
+            else:
+                new_value = int(current) + delta
+            self.set(key, new_value)
+            return new_value
+        except Exception:
+            # If key doesn't exist and no default provided, raise KeyError
+            if default is None:
+                raise KeyError(key)
+            new_value = default + delta
+            self.set(key, new_value)
+            return new_value
+
+    def decr(self, key: str, delta: int = 1, default: int = 0, retry: bool = False) -> int:
+        """
+        Decrement value for key by delta
+
+        Args:
+            key: Cache key
+            delta: Amount to decrement by
+            default: Default value if key doesn't exist
+            retry: Whether to retry on failure (ignored)
+
+        Returns:
+            New value after decrement
+        """
+        return self.incr(key, -delta, default, retry)
+
+    def touch(self, key: str, expire: Optional[float] = None, retry: bool = False) -> bool:
+        """
+        Update expiration time for key
+
+        Args:
+            key: Cache key
+            expire: New expiration time
+            retry: Whether to retry on failure (ignored)
+
+        Returns:
+            True if key was touched, False if key doesn't exist
+        """
+        if key not in self:
+            return False
+
+        # Get current value and update with new expiration
+        value = self.get(key)
+        if value is not None:
+            return self.set(key, value, expire)
+        return False
+
     def close(self) -> None:
         """Close cache (no-op for Rust implementation)"""
         pass
