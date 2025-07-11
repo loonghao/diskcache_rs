@@ -74,7 +74,7 @@ jobs:
             curl -LsSf https://astral.sh/uv/install.sh | sh
           run: |
             source $HOME/.local/bin/env
-            uv pip install diskcache_rs --no-index --find-links dist/ --force-reinstall --system
+            uv pip install diskcache_rs --find-links dist/ --force-reinstall --system
             python3 -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -110,10 +110,13 @@ jobs:
           image: alpine:latest
           options: -v ${{ github.workspace }}:/io -w /io
           run: |
-            apk add py3-pip curl
+            apk add py3-pip py3-venv curl
             curl -LsSf https://astral.sh/uv/install.sh | sh
             source $HOME/.local/bin/env
-            uv pip install diskcache_rs --no-index --find-links /io/dist/ --force-reinstall --system
+            # Create virtual environment to avoid externally-managed-environment error
+            python3 -m venv /tmp/test_env
+            source /tmp/test_env/bin/activate
+            uv pip install diskcache_rs --find-links /io/dist/ --force-reinstall
             python3 -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -150,11 +153,14 @@ jobs:
           distro: alpine_latest
           githubToken: ${{ github.token }}
           install: |
-            apk add py3-pip curl
+            apk add py3-pip py3-venv curl
             curl -LsSf https://astral.sh/uv/install.sh | sh
           run: |
             source $HOME/.local/bin/env
-            uv pip install diskcache_rs --no-index --find-links dist/ --force-reinstall --system
+            # Create virtual environment to avoid externally-managed-environment error
+            python3 -m venv /tmp/test_env
+            source /tmp/test_env/bin/activate
+            uv pip install diskcache_rs --find-links dist/ --force-reinstall
             python3 -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
