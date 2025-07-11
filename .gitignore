@@ -72,12 +72,12 @@ docs/_build/
 .python-version
 
 # Local test files (don't commit to repo)
-test_*.py
 simple_test.py
 benchmark_results.json
 
 # Keep the new tests/ directory structure
 !tests/
+!tests/test_*.py
 
 # UV lock file (can be regenerated)
 uv.lock
