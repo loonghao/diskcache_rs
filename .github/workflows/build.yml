@@ -110,13 +110,17 @@ jobs:
           image: alpine:latest
           options: -v ${{ github.workspace }}:/io -w /io
           run: |
-            apk add py3-pip py3-venv curl
+            apk add py3-pip curl python3-dev
             curl -LsSf https://astral.sh/uv/install.sh | sh
             source $HOME/.local/bin/env
-            # Create virtual environment to avoid externally-managed-environment error
-            python3 -m venv /tmp/test_env
-            source /tmp/test_env/bin/activate
-            uv pip install diskcache_rs --find-links /io/dist/ --force-reinstall
+            # Try to create virtual environment, fallback to --system if venv not available
+            if python3 -m venv /tmp/test_env 2>/dev/null; then
+              source /tmp/test_env/bin/activate
+              uv pip install diskcache_rs --find-links /io/dist/ --force-reinstall
+            else
+              echo "venv not available, using --system flag"
+              uv pip install diskcache_rs --find-links /io/dist/ --force-reinstall --system
+            fi
             python3 -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -153,14 +157,18 @@ jobs:
           distro: alpine_latest
           githubToken: ${{ github.token }}
           install: |
-            apk add py3-pip py3-venv curl
+            apk add py3-pip curl python3-dev
             curl -LsSf https://astral.sh/uv/install.sh | sh
           run: |
             source $HOME/.local/bin/env
-            # Create virtual environment to avoid externally-managed-environment error
-            python3 -m venv /tmp/test_env
-            source /tmp/test_env/bin/activate
-            uv pip install diskcache_rs --find-links dist/ --force-reinstall
+            # Try to create virtual environment, fallback to --system if venv not available
+            if python3 -m venv /tmp/test_env 2>/dev/null; then
+              source /tmp/test_env/bin/activate
+              uv pip install diskcache_rs --find-links dist/ --force-reinstall
+            else
+              echo "venv not available, using --system flag"
+              uv pip install diskcache_rs --find-links dist/ --force-reinstall --system
+            fi
             python3 -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
