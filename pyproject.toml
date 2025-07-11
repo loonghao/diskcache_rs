@@ -1,0 +1,43 @@
+[build-system]
+requires = ["maturin>=1.9,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "diskcache_rs"
+description = "A high-performance disk cache implementation in Rust with Python bindings"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+license = {text = "Apache-2.0"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Archiving",
+]
+keywords = ["cache", "disk", "storage", "performance", "rust"]
+dynamic = ["version"]
+dependencies = [
+    "diskcache>=5.6.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/loonghao/diskcache_rs"
+Repository = "https://github.com/loonghao/diskcache_rs"
+Documentation = "https://github.com/loonghao/diskcache_rs"
+"Bug Tracker" = "https://github.com/loonghao/diskcache_rs/issues"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]

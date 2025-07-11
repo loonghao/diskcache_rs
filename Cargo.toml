@@ -1,0 +1,41 @@
+[package]
+name = "diskcache_rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A high-performance disk cache implementation in Rust with Python bindings"
+license = "Apache-2.0"
+repository = "https://github.com/loonghao/diskcache_rs"
+keywords = ["cache", "disk", "storage", "performance"]
+categories = ["caching", "database"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "diskcache_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.25.0", features = ["extension-module"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+tokio = { version = "1.0", features = ["full"] }
+parking_lot = "0.12"
+dashmap = "6.1"
+lz4_flex = "0.11"
+blake3 = "1.5"
+tempfile = "3.8"
+thiserror = "2.0"
+anyhow = "1.0"
+tracing = "0.1"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+memmap2 = "0.9"
+crossbeam = "0.8"
+rusqlite = { version = "0.32", features = ["bundled"] }
+lru = "0.12"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["fileapi", "winbase"] }
