@@ -159,8 +159,10 @@ class TestPerformance:
         
         results = []
         
+        from diskcache_rs import Cache
+
         for max_size, max_entries in cache_configs:
-            cache = diskcache_rs.PyCache(temp_cache_dir, max_size=max_size, max_entries=max_entries)
+            cache = Cache(temp_cache_dir, max_size=max_size, max_entries=max_entries)
             
             # Test with subset of operations
             test_keys = [f"size_test_{i}" for i in range(100)]
@@ -197,14 +199,14 @@ class TestPerformance:
             diskcache_available = False
             pytest.skip("Original diskcache not available for comparison. Install with: uv add diskcache")
         
-        import diskcache_rs
-        
+        from diskcache_rs import Cache
+
         # Test data
         keys = benchmark_data["keys"][:100]
         values = benchmark_data["values"][:100]
-        
+
         # Test diskcache_rs
-        rs_cache = diskcache_rs.PyCache(temp_cache_dir + "_rs")
+        rs_cache = Cache(temp_cache_dir + "_rs")
         start_time = time.perf_counter()
         for key, value in zip(keys, values):
             rs_cache.set(key, value)

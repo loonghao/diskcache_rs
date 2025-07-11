@@ -10,6 +10,7 @@ pub fn current_timestamp() -> u64 {
 }
 
 /// Get current timestamp in milliseconds since Unix epoch
+#[allow(dead_code)]
 pub fn current_timestamp_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -18,6 +19,7 @@ pub fn current_timestamp_millis() -> u64 {
 }
 
 /// Convert bytes to human readable format
+#[allow(dead_code)]
 pub fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     const THRESHOLD: u64 = 1024;
@@ -38,6 +40,7 @@ pub fn format_bytes(bytes: u64) -> String {
 }
 
 /// Calculate hash for a key
+#[allow(dead_code)]
 pub fn hash_key(key: &str) -> String {
     blake3::hash(key.as_bytes()).to_hex().to_string()
 }
@@ -66,6 +69,7 @@ pub fn validate_key(key: &str) -> CacheResult<()> {
 }
 
 /// Sanitize key for filesystem use
+#[allow(dead_code)]
 pub fn sanitize_key(key: &str) -> String {
     // Replace invalid characters with underscores
     let invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'];
@@ -75,6 +79,7 @@ pub fn sanitize_key(key: &str) -> String {
 }
 
 /// Check if a path is likely on a network filesystem
+#[allow(dead_code)]
 pub fn is_network_path(path: &std::path::Path) -> bool {
     let path_str = path.to_string_lossy();
 
@@ -95,6 +100,7 @@ pub fn is_network_path(path: &std::path::Path) -> bool {
 }
 
 /// Retry mechanism for operations that might fail on network filesystems
+#[allow(dead_code)]
 pub async fn retry_operation<F, T, E>(
     operation: F,
     max_retries: usize,
@@ -139,10 +145,12 @@ pub struct FileLock {
 }
 
 impl FileLock {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self { file: None }
     }
 
+    #[allow(dead_code)]
     pub fn try_lock(&mut self, path: &std::path::Path) -> CacheResult<bool> {
         use std::fs::OpenOptions;
 

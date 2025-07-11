@@ -20,6 +20,7 @@ pub struct LruEviction {
 }
 
 impl LruEviction {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             access_order: Arc::new(RwLock::new(BTreeMap::new())),
@@ -82,6 +83,7 @@ pub struct LfuEviction {
 }
 
 impl LfuEviction {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             frequency_order: Arc::new(RwLock::new(BTreeMap::new())),
@@ -112,7 +114,7 @@ impl EvictionPolicy for LfuEviction {
         // Add to new frequency bucket
         frequency_order
             .entry(new_freq)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(key.to_string());
 
         key_to_frequency.insert(key.to_string(), new_freq);
@@ -168,6 +170,7 @@ pub struct TtlEviction {
 }
 
 impl TtlEviction {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             expiry_times: Arc::new(RwLock::new(BTreeMap::new())),
@@ -219,7 +222,7 @@ impl EvictionPolicy for TtlEviction {
             // Add new expiry
             expiry_times
                 .entry(expire_time)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(key.to_string());
 
             key_to_expiry.insert(key.to_string(), expire_time);
@@ -259,6 +262,7 @@ pub struct CombinedEviction {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum EvictionStrategy {
     Lru,
     Lfu,
@@ -268,6 +272,7 @@ pub enum EvictionStrategy {
 }
 
 impl CombinedEviction {
+    #[allow(dead_code)]
     pub fn new(strategy: EvictionStrategy) -> Self {
         Self {
             lru: LruEviction::new(),

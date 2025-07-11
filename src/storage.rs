@@ -25,10 +25,12 @@ pub struct FileStorage {
     directory: PathBuf,
     index: Arc<RwLock<HashMap<String, FileEntry>>>,
     use_atomic_writes: bool,
+    #[allow(dead_code)]
     use_file_locking: bool,
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct FileEntry {
     file_path: PathBuf,
     size: u64,
@@ -45,7 +47,7 @@ impl FileStorage {
         let directory = directory.as_ref().to_path_buf();
 
         // Create directory if it doesn't exist
-        std::fs::create_dir_all(&directory).map_err(|e| CacheError::Io(e))?;
+        std::fs::create_dir_all(&directory).map_err(CacheError::Io)?;
 
         // Check if this is a network file system
         let is_network_fs = Self::detect_network_filesystem(&directory)?;
@@ -119,16 +121,16 @@ impl FileStorage {
         let mut index = self.index.write();
         index.clear();
 
-        let entries = std::fs::read_dir(&self.directory).map_err(|e| CacheError::Io(e))?;
+        let entries = std::fs::read_dir(&self.directory).map_err(CacheError::Io)?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| CacheError::Io(e))?;
+            let entry = entry.map_err(CacheError::Io)?;
             let path = entry.path();
 
-            if path.is_file() && path.extension().map_or(false, |ext| ext == "cache") {
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "cache") {
                 if let Some(stem) = path.file_stem() {
                     if let Some(key) = stem.to_str() {
-                        let metadata = entry.metadata().map_err(|e| CacheError::Io(e))?;
+                        let metadata = entry.metadata().map_err(CacheError::Io)?;
 
                         let file_entry = FileEntry {
                             file_path: path.clone(),
@@ -174,13 +176,13 @@ impl FileStorage {
                     .create(true)
                     .truncate(true)
                     .open(&temp_path)
-                    .map_err(|e| CacheError::Io(e))?;
+                    .map_err(CacheError::Io)?;
 
-                file.write_all(data).map_err(|e| CacheError::Io(e))?;
-                file.sync_all().map_err(|e| CacheError::Io(e))?;
+                file.write_all(data).map_err(CacheError::Io)?;
+                file.sync_all().map_err(CacheError::Io)?;
             }
 
-            std::fs::rename(&temp_path, path).map_err(|e| CacheError::Io(e))?;
+            std::fs::rename(&temp_path, path).map_err(CacheError::Io)?;
         } else {
             // Direct write for network file systems
             let mut file = OpenOptions::new()
@@ -188,10 +190,10 @@ impl FileStorage {
                 .create(true)
                 .truncate(true)
                 .open(path)
-                .map_err(|e| CacheError::Io(e))?;
+                .map_err(CacheError::Io)?;
 
-            file.write_all(data).map_err(|e| CacheError::Io(e))?;
-            file.sync_all().map_err(|e| CacheError::Io(e))?;
+            file.write_all(data).map_err(CacheError::Io)?;
+            file.sync_all().map_err(CacheError::Io)?;
         }
 
         Ok(())
@@ -206,10 +208,10 @@ impl StorageBackend for FileStorage {
             return Ok(None);
         }
 
-        let mut file = File::open(&file_path).map_err(|e| CacheError::Io(e))?;
+        let mut file = File::open(&file_path).map_err(CacheError::Io)?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)
-            .map_err(|e| CacheError::Io(e))?;
+            .map_err(CacheError::Io)?;
 
         let entry: CacheEntry = deserialize(&buffer).map_err(|e| {
             CacheError::Deserialization(format!("Storage deserialization error: {:?}", e))
@@ -250,7 +252,7 @@ impl StorageBackend for FileStorage {
         let file_path = self.get_file_path(key);
 
         if file_path.exists() {
-            std::fs::remove_file(&file_path).map_err(|e| CacheError::Io(e))?;
+            std::fs::remove_file(&file_path).map_err(CacheError::Io)?;
             self.index.write().remove(key);
             Ok(true)
         } else {

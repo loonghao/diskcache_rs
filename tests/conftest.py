@@ -8,7 +8,7 @@ import os
 import shutil
 from pathlib import Path
 
-import diskcache_rs
+from diskcache_rs import Cache
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def temp_cache_dir():
 @pytest.fixture
 def cache(temp_cache_dir):
     """Create a cache instance for testing"""
-    return diskcache_rs.PyCache(
+    return Cache(
         temp_cache_dir,
         max_size=1024 * 1024,  # 1MB
         max_entries=1000
@@ -34,7 +34,7 @@ def cache(temp_cache_dir):
 @pytest.fixture
 def large_cache(temp_cache_dir):
     """Create a larger cache instance for performance testing"""
-    return diskcache_rs.PyCache(
+    return Cache(
         temp_cache_dir,
         max_size=100 * 1024 * 1024,  # 100MB
         max_entries=10000
@@ -59,7 +59,7 @@ def cloud_cache_dir():
 @pytest.fixture
 def cloud_cache(cloud_cache_dir):
     """Create a cache instance on cloud drive"""
-    return diskcache_rs.PyCache(
+    return Cache(
         cloud_cache_dir,
         max_size=10 * 1024 * 1024,  # 10MB
         max_entries=1000

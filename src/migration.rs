@@ -66,7 +66,7 @@ impl DiskCacheMigrator {
             .map_err(|e| CacheError::Unknown(format!("Failed to prepare statement: {}", e)))?;
 
         let table_iter = stmt
-            .query_map([], |row| Ok(row.get::<_, String>(0)?))
+            .query_map([], |row| row.get::<_, String>(0))
             .map_err(|e| CacheError::Unknown(format!("Failed to query tables: {}", e)))?;
 
         let mut tables = Vec::new();
@@ -129,7 +129,7 @@ impl DiskCacheMigrator {
 
         let column_iter = stmt
             .query_map([], |row| {
-                Ok(row.get::<_, String>(1)?) // Column name is at index 1
+                row.get::<_, String>(1) // Column name is at index 1
             })
             .map_err(|e| CacheError::Unknown(format!("Failed to query columns: {}", e)))?;
 
@@ -196,11 +196,9 @@ impl DiskCacheMigrator {
             })
             .map_err(|e| CacheError::Unknown(format!("Failed to query settings: {}", e)))?;
 
-        for setting_result in settings_iter {
-            if let Ok((key, value)) = setting_result {
-                tracing::info!("Found setting: {} = {}", key, value);
-                // TODO: Apply relevant settings to our cache configuration
-            }
+        for (key, value) in settings_iter.flatten() {
+            tracing::info!("Found setting: {} = {}", key, value);
+            // TODO: Apply relevant settings to our cache configuration
         }
 
         Ok(())
@@ -209,12 +207,12 @@ impl DiskCacheMigrator {
     /// Create a backup of the original diskcache data
     pub fn create_backup(&self) -> CacheResult<PathBuf> {
         let backup_dir = self.source_dir.join("diskcache_backup");
-        std::fs::create_dir_all(&backup_dir).map_err(|e| CacheError::Io(e))?;
+        std::fs::create_dir_all(&backup_dir).map_err(CacheError::Io)?;
 
         let cache_db = self.source_dir.join("cache.db");
         let backup_db = backup_dir.join("cache.db");
 
-        std::fs::copy(&cache_db, &backup_db).map_err(|e| CacheError::Io(e))?;
+        std::fs::copy(&cache_db, &backup_db).map_err(CacheError::Io)?;
 
         tracing::info!("Created backup at: {:?}", backup_dir);
         Ok(backup_dir)
@@ -253,6 +251,7 @@ pub fn detect_diskcache_format(dir: &Path) -> bool {
 }
 
 /// Auto-migrate if diskcache data is detected
+#[allow(dead_code)]
 pub fn auto_migrate_if_needed(
     cache_dir: &Path,
     _storage: &mut dyn StorageBackend,

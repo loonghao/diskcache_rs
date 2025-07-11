@@ -20,12 +20,14 @@ pub enum CompressionType {
 
 /// Serializer enum for different formats
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum Serializer {
     Json(JsonSerializer),
     Bincode(BincodeSerializer),
 }
 
 impl Serializer {
+    #[allow(dead_code)]
     pub fn serialize<T: Serialize>(&self, value: &T) -> CacheResult<Vec<u8>> {
         match self {
             Serializer::Json(s) => s.serialize(value),
@@ -33,6 +35,7 @@ impl Serializer {
         }
     }
 
+    #[allow(dead_code)]
     pub fn deserialize<T: for<'de> Deserialize<'de>>(&self, data: &[u8]) -> CacheResult<T> {
         match self {
             Serializer::Json(s) => s.deserialize(data),
@@ -42,6 +45,7 @@ impl Serializer {
 }
 
 /// Internal serializer trait for different formats
+#[allow(dead_code)]
 trait SerializerImpl: Send + Sync {
     fn serialize<T: Serialize>(&self, value: &T) -> CacheResult<Vec<u8>>;
     fn deserialize<T: for<'de> Deserialize<'de>>(&self, data: &[u8]) -> CacheResult<T>;

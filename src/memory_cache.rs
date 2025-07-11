@@ -80,6 +80,7 @@ impl MemoryCache {
     }
 
     /// Check if key exists in memory cache
+    #[allow(dead_code)]
     pub fn contains(&self, key: &str) -> bool {
         let cache = self.cache.read();
         cache.contains(key)
@@ -99,12 +100,14 @@ impl MemoryCache {
     }
 
     /// Get all keys in memory cache
+    #[allow(dead_code)]
     pub fn keys(&self) -> Vec<String> {
         let cache = self.cache.read();
         cache.iter().map(|(k, _)| k.clone()).collect()
     }
 
     /// Promote a key to most recently used
+    #[allow(dead_code)]
     pub fn touch(&self, key: &str) {
         let mut cache = self.cache.write();
         if cache.contains(key) {

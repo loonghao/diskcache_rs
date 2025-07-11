@@ -24,14 +24,14 @@ class TestNetworkFilesystem:
     @pytest.mark.skipif(not os.path.exists("Z:\\"), reason="Cloud drive Z: not available")
     def test_cloud_drive_persistence(self, cloud_cache_dir, sample_data):
         """Test data persistence across cache instances on cloud drive"""
-        import diskcache_rs
-        
+        from diskcache_rs import Cache
+
         # Create first cache instance and store data
-        cache1 = diskcache_rs.PyCache(cloud_cache_dir)
+        cache1 = Cache(cloud_cache_dir)
         cache1.set("persistent_key", sample_data["large"])
-        
+
         # Create second cache instance and retrieve data
-        cache2 = diskcache_rs.PyCache(cloud_cache_dir)
+        cache2 = Cache(cloud_cache_dir)
         retrieved = cache2.get("persistent_key")
         assert retrieved == sample_data["large"]
 
@@ -173,18 +173,18 @@ class TestNetworkFilesystem:
 
     def test_path_normalization(self, temp_cache_dir):
         """Test that different path formats work correctly"""
-        import diskcache_rs
-        
+        from diskcache_rs import Cache
+
         # Test different path separators
         paths_to_test = [
             temp_cache_dir,
             temp_cache_dir.replace("\\", "/"),  # Forward slashes
             str(Path(temp_cache_dir)),  # Pathlib normalization
         ]
-        
+
         for path in paths_to_test:
             try:
-                cache = diskcache_rs.PyCache(path)
+                cache = Cache(path)
                 cache.set("path_test", b"test data")
                 assert cache.get("path_test") == b"test data"
             except Exception as e:

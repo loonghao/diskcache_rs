@@ -90,8 +90,9 @@ class TestBasicOperations:
 
     def test_cache_size_limit(self, temp_cache_dir):
         """Test cache respects size limits"""
+        from diskcache_rs import Cache
         # Create a small cache
-        small_cache = diskcache_rs.PyCache(
+        small_cache = Cache(
             temp_cache_dir,
             max_size=1024,  # 1KB limit
             max_entries=100
@@ -108,8 +109,9 @@ class TestBasicOperations:
 
     def test_cache_entry_limit(self, temp_cache_dir):
         """Test cache respects entry count limits"""
+        from diskcache_rs import Cache
         # Create a cache with low entry limit
-        limited_cache = diskcache_rs.PyCache(
+        limited_cache = Cache(
             temp_cache_dir,
             max_size=1024 * 1024,
             max_entries=5

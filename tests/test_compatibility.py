@@ -36,12 +36,12 @@ class TestCompatibility:
     def test_basic_api_compatibility(self, diskcache_available, temp_dirs, sample_data):
         """Test that basic API is compatible"""
         import diskcache
-        import diskcache_rs
-        
+        from diskcache_rs import Cache
+
         rs_dir, dc_dir = temp_dirs
-        
+
         # Create both caches
-        rs_cache = diskcache_rs.PyCache(rs_dir)
+        rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
         
         # Test same operations on both
@@ -71,11 +71,11 @@ class TestCompatibility:
     def test_keys_compatibility(self, diskcache_available, temp_dirs, sample_data):
         """Test keys() method compatibility"""
         import diskcache
-        import diskcache_rs
-        
+        from diskcache_rs import Cache
+
         rs_dir, dc_dir = temp_dirs
-        
-        rs_cache = diskcache_rs.PyCache(rs_dir)
+
+        rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
         
         # Add same keys to both caches
@@ -100,7 +100,7 @@ class TestCompatibility:
         
         rs_dir, dc_dir = temp_dirs
         
-        rs_cache = diskcache_rs.PyCache(rs_dir)
+        rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
         
         # Add data to both caches
@@ -128,7 +128,7 @@ class TestCompatibility:
         
         rs_dir, dc_dir = temp_dirs
         
-        rs_cache = diskcache_rs.PyCache(rs_dir)
+        rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
         
         # Get stats from both
@@ -151,7 +151,7 @@ class TestCompatibility:
         
         rs_dir, dc_dir = temp_dirs
         
-        rs_cache = diskcache_rs.PyCache(rs_dir)
+        rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
         
         nonexistent_key = "this_key_does_not_exist"
@@ -183,7 +183,7 @@ class TestCompatibility:
         
         rs_dir, dc_dir = temp_dirs
         
-        rs_cache = diskcache_rs.PyCache(rs_dir)
+        rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
         
         # Test different data types
@@ -215,7 +215,7 @@ class TestCompatibility:
         
         rs_dir, dc_dir = temp_dirs
         
-        rs_cache = diskcache_rs.PyCache(rs_dir)
+        rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
         
         unicode_keys = [
@@ -249,7 +249,7 @@ class TestCompatibility:
         
         rs_dir, dc_dir = temp_dirs
         
-        rs_cache = diskcache_rs.PyCache(rs_dir)
+        rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
         
         key = "overwrite_test"

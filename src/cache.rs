@@ -55,6 +55,7 @@ pub struct DiskCache {
     config: CacheConfig,
     storage: Box<dyn StorageBackend>,
     eviction: Box<dyn EvictionPolicy>,
+    #[allow(dead_code)]
     serializer: crate::serialization::Serializer,
     stats: Arc<RwLock<CacheStats>>,
     last_vacuum: Arc<RwLock<u64>>,
@@ -470,8 +471,10 @@ impl RustCache {
     #[new]
     #[pyo3(signature = (directory, **kwargs))]
     fn new(directory: String, kwargs: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<Self> {
-        let mut config = CacheConfig::default();
-        config.directory = PathBuf::from(directory);
+        let mut config = CacheConfig {
+            directory: PathBuf::from(directory),
+            ..Default::default()
+        };
 
         // Parse kwargs for compatibility with diskcache.Cache
         if let Some(kwargs) = kwargs {
