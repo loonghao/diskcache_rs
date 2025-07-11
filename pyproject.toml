@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.9,<2.0"]
+requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
@@ -55,6 +55,9 @@ Documentation = "https://github.com/loonghao/diskcache_rs"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "diskcache_rs.diskcache_rs"
+bindings = "pyo3"
 
 [tool.ruff]
 line-length = 88
@@ -106,3 +109,5 @@ filterwarnings = [
     "ignore::UserWarning",
     "ignore::DeprecationWarning",
 ]
+
+

@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [aarch64, armv7, s390x, ppc64le]
+        target: [aarch64, armv7]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -61,7 +61,7 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           manylinux: auto
-      - uses: uraimo/run-on-arch-action@v2
+      - uses: uraimo/run-on-arch-action@v3.0.1
         if: matrix.target != 'ppc64le'
         name: Install built wheel
         with:
@@ -70,10 +70,11 @@ jobs:
           githubToken: ${{ github.token }}
           install: |
             apt-get update
-            apt-get install -y --no-install-recommends python3 python3-pip
-            pip3 install -U pip
+            apt-get install -y --no-install-recommends python3 python3-pip curl
+            curl -LsSf https://astral.sh/uv/install.sh | sh
           run: |
-            pip3 install diskcache_rs --no-index --find-links dist/ --force-reinstall
+            source $HOME/.local/bin/env
+            uv pip install diskcache_rs --no-index --find-links dist/ --force-reinstall --system
             python3 -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -109,9 +110,10 @@ jobs:
           image: alpine:latest
           options: -v ${{ github.workspace }}:/io -w /io
           run: |
-            apk add py3-pip
-            pip3 install -U pip
-            pip3 install diskcache_rs --no-index --find-links /io/dist/ --force-reinstall
+            apk add py3-pip curl
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            source $HOME/.local/bin/env
+            uv pip install diskcache_rs --no-index --find-links /io/dist/ --force-reinstall --system
             python3 -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -141,17 +143,18 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           manylinux: musllinux_1_2
-      - uses: uraimo/run-on-arch-action@v2
+      - uses: uraimo/run-on-arch-action@v3.0.1
         name: Install built wheel
         with:
           arch: ${{ matrix.platform.arch }}
           distro: alpine_latest
           githubToken: ${{ github.token }}
           install: |
-            apk add py3-pip
-            pip3 install -U pip
+            apk add py3-pip curl
+            curl -LsSf https://astral.sh/uv/install.sh | sh
           run: |
-            pip3 install diskcache_rs --no-index --find-links dist/ --force-reinstall
+            source $HOME/.local/bin/env
+            uv pip install diskcache_rs --no-index --find-links dist/ --force-reinstall --system
             python3 -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
