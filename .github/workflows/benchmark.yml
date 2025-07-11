@@ -48,7 +48,11 @@ jobs:
 
       - name: Run pytest benchmarks
         run: |
-          uv run python -m pytest tests/test_performance.py -v -k "benchmark"
+          uv run python -m pytest tests/test_performance.py -v -k "benchmark" --benchmark-skip
+
+      - name: Run official benchmark comparison
+        run: |
+          uv run python tests/benchmark_official.py -n 1000
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
