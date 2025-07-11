@@ -168,12 +168,16 @@ class Cache:
         except Exception:
             return False
     
-    def __contains__(self, key: str) -> bool:
+    def exists(self, key: str) -> bool:
         """Check if key exists in cache"""
         try:
             return self._cache.exists(key)
         except Exception:
             return False
+
+    def __contains__(self, key: str) -> bool:
+        """Check if key exists in cache"""
+        return self.exists(key)
     
     def __getitem__(self, key: str) -> Any:
         """Get item using [] syntax"""
@@ -193,15 +197,19 @@ class Cache:
     
     def __iter__(self) -> Iterator[str]:
         """Iterate over cache keys"""
-        try:
-            return iter(self._cache.keys())
-        except Exception:
-            return iter([])
+        return iter(self.keys())
     
+    def keys(self) -> List[str]:
+        """Get list of all cache keys"""
+        try:
+            return self._cache.keys()
+        except Exception:
+            return []
+
     def __len__(self) -> int:
         """Get number of items in cache"""
         try:
-            return len(self._cache.keys())
+            return len(self.keys())
         except Exception:
             return 0
     
