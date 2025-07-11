@@ -2,7 +2,7 @@
 name = "diskcache_rs"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["longhao <hal.long@outlook.com>"]
 description = "A high-performance disk cache implementation in Rust with Python bindings"
 license = "Apache-2.0"
 repository = "https://github.com/loonghao/diskcache_rs"

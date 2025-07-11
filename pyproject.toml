@@ -6,7 +6,7 @@ build-backend = "maturin"
 name = "diskcache_rs"
 description = "A high-performance disk cache implementation in Rust with Python bindings"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "longhao", email = "hal.long@outlook.com"},
 ]
 license = {text = "Apache-2.0"}
 requires-python = ">=3.8"
@@ -41,3 +41,35 @@ Documentation = "https://github.com/loonghao/diskcache_rs"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py38"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

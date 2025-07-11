@@ -70,3 +70,25 @@ docs/_build/
 
 # Pyenv
 .python-version
+
+# Local test files (don't commit to repo)
+test_*.py
+simple_test.py
+benchmark_results.json
+
+# UV lock file (can be regenerated)
+uv.lock
+
+# Temporary files
+*.tmp
+*.temp
+
+# Local development files
+RELEASE.md
+LICENSE
+.github/ISSUE_TEMPLATE/
+.github/pull_request_template.md
+.github/workflows/benchmark.yml
+
+# Benchmark results
+*.benchmark
