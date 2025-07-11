@@ -1,15 +1,16 @@
 use crate::error::CacheResult;
 use crate::eviction::{CombinedEviction, EvictionPolicy, EvictionStrategy};
-use crate::serialization::{CacheEntry, CompressionType, SerializationFormat, create_serializer};
-use crate::storage::{FileStorage, StorageBackend};
-use crate::utils::{CacheStats, validate_cache_config, validate_key, current_timestamp};
 use crate::memory_cache::MemoryCache;
 use crate::migration::{detect_diskcache_format, DiskCacheMigrator};
+use crate::serialization::{create_serializer, CacheEntry, CompressionType, SerializationFormat};
+use crate::storage::{FileStorage, StorageBackend};
+use crate::utils::{current_timestamp, validate_cache_config, validate_key, CacheStats};
 use parking_lot::RwLock;
 use pyo3::prelude::*;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::collections::HashMap;
 
 /// Cache configuration
 #[derive(Debug, Clone)]
@@ -23,7 +24,7 @@ pub struct CacheConfig {
     pub use_atomic_writes: bool,
     pub use_file_locking: bool,
     pub auto_vacuum: bool,
-    pub vacuum_interval: u64, // seconds
+    pub vacuum_interval: u64,   // seconds
     pub memory_cache_size: u64, // bytes
     pub memory_cache_entries: usize,
     pub auto_migrate: bool,
@@ -41,7 +42,7 @@ impl Default for CacheConfig {
             use_atomic_writes: true,
             use_file_locking: true,
             auto_vacuum: true,
-            vacuum_interval: 3600, // 1 hour
+            vacuum_interval: 3600,               // 1 hour
             memory_cache_size: 64 * 1024 * 1024, // 64MB
             memory_cache_entries: 10000,
             auto_migrate: true,
@@ -50,7 +51,7 @@ impl Default for CacheConfig {
 }
 
 /// High-performance disk cache implementation
-pub struct Cache {
+pub struct DiskCache {
     config: CacheConfig,
     storage: Box<dyn StorageBackend>,
     eviction: Box<dyn EvictionPolicy>,
@@ -60,32 +61,31 @@ pub struct Cache {
     memory_cache: Option<MemoryCache>,
 }
 
-impl Cache {
+impl DiskCache {
     /// Create a new cache with the given configuration
     pub fn new(config: CacheConfig) -> CacheResult<Self> {
         // Validate configuration
-        validate_cache_config(
-            config.max_size,
-            config.max_entries,
-            &config.directory,
-        )?;
-        
+        validate_cache_config(config.max_size, config.max_entries, &config.directory)?;
+
         // Create storage backend
         let storage = Box::new(FileStorage::new(
             &config.directory,
             config.use_atomic_writes,
             config.use_file_locking,
         )?);
-        
+
         // Create eviction policy
         let eviction = Box::new(CombinedEviction::new(config.eviction_strategy));
-        
+
         // Create serializer
         let serializer = create_serializer(config.serialization_format, config.compression);
 
         // Create memory cache if enabled
         let memory_cache = if config.memory_cache_size > 0 && config.memory_cache_entries > 0 {
-            Some(MemoryCache::new(config.memory_cache_entries, config.memory_cache_size))
+            Some(MemoryCache::new(
+                config.memory_cache_entries,
+                config.memory_cache_size,
+            ))
         } else {
             None
         };
@@ -107,14 +107,16 @@ impl Cache {
 
         Ok(cache)
     }
-    
+
     /// Create a cache with default configuration in the specified directory
     pub fn with_directory<P: Into<PathBuf>>(directory: P) -> CacheResult<Self> {
-        let mut config = CacheConfig::default();
-        config.directory = directory.into();
+        let config = CacheConfig {
+            directory: directory.into(),
+            ..Default::default()
+        };
         Self::new(config)
     }
-    
+
     /// Get a value from the cache
     pub fn get(&self, key: &str) -> CacheResult<Option<Vec<u8>>> {
         validate_key(key)?;
@@ -162,7 +164,7 @@ impl Cache {
             }
         }
     }
-    
+
     /// Set a value in the cache
     pub fn set(
         &self,
@@ -172,18 +174,13 @@ impl Cache {
         tags: Vec<String>,
     ) -> CacheResult<()> {
         validate_key(key)?;
-        
+
         // Check if we need to evict entries
         self.maybe_evict()?;
-        
+
         // Create cache entry
-        let entry = CacheEntry::new(
-            key.to_string(),
-            value.to_vec(),
-            tags,
-            expire_time,
-        );
-        
+        let entry = CacheEntry::new(key.to_string(), value.to_vec(), tags, expire_time);
+
         // Store the entry
         self.storage.set(key, entry.clone())?;
         self.eviction.on_insert(key, &entry);
@@ -198,14 +195,14 @@ impl Cache {
         stats.sets += 1;
         stats.total_size += entry.size;
         stats.entry_count += 1;
-        
+
         Ok(())
     }
-    
+
     /// Delete a value from the cache
     pub fn delete(&self, key: &str) -> CacheResult<bool> {
         validate_key(key)?;
-        
+
         let existed = self.storage.delete(key)?;
         if existed {
             self.eviction.on_remove(key);
@@ -219,21 +216,21 @@ impl Cache {
             stats.deletes += 1;
             stats.entry_count = stats.entry_count.saturating_sub(1);
         }
-        
+
         Ok(existed)
     }
-    
+
     /// Check if a key exists in the cache
     pub fn exists(&self, key: &str) -> CacheResult<bool> {
         validate_key(key)?;
         self.storage.exists(key)
     }
-    
+
     /// Get all keys in the cache
     pub fn keys(&self) -> CacheResult<Vec<String>> {
         self.storage.keys()
     }
-    
+
     /// Clear all entries from the cache
     pub fn clear(&self) -> CacheResult<()> {
         self.storage.clear()?;
@@ -249,42 +246,39 @@ impl Cache {
 
         Ok(())
     }
-    
+
     /// Get cache statistics
     pub fn stats(&self) -> CacheStats {
         self.stats.read().clone()
     }
-    
+
     /// Get current cache size in bytes
     pub fn size(&self) -> CacheResult<u64> {
         self.storage.size()
     }
-    
+
     /// Manually trigger vacuum operation
     pub fn vacuum(&self) -> CacheResult<()> {
         self.storage.vacuum()?;
         *self.last_vacuum.write() = current_timestamp();
         Ok(())
     }
-    
+
     /// Check if eviction is needed and perform it
     fn maybe_evict(&self) -> CacheResult<()> {
         let current_size = self.size()?;
         let current_entries = self.keys()?.len() as u64;
-        
+
         let mut evict_count = 0;
-        
+
         // Check size limit
         if let Some(max_size) = self.config.max_size {
             if current_size > max_size {
                 // Evict 10% of entries or enough to get under limit
-                evict_count = std::cmp::max(
-                    evict_count,
-                    (current_entries / 10).max(1),
-                );
+                evict_count = std::cmp::max(evict_count, (current_entries / 10).max(1));
             }
         }
-        
+
         // Check entry count limit
         if let Some(max_entries) = self.config.max_entries {
             if current_entries > max_entries {
@@ -294,7 +288,7 @@ impl Cache {
                 );
             }
         }
-        
+
         // Perform eviction
         if evict_count > 0 {
             let victims = self.eviction.select_victims(evict_count as usize);
@@ -304,7 +298,7 @@ impl Cache {
                 self.stats.write().evictions += 1;
             }
         }
-        
+
         // Auto vacuum if needed
         if self.config.auto_vacuum {
             let last_vacuum = *self.last_vacuum.read();
@@ -313,7 +307,7 @@ impl Cache {
                 self.vacuum()?;
             }
         }
-        
+
         Ok(())
     }
 
@@ -387,31 +381,29 @@ impl Cache {
 /// Python wrapper for the Cache
 #[pyclass]
 pub struct PyCache {
-    cache: Cache,
+    cache: DiskCache,
 }
 
 #[pymethods]
 impl PyCache {
     #[new]
     #[pyo3(signature = (directory, max_size=None, max_entries=None))]
-    fn new(
-        directory: String,
-        max_size: Option<u64>,
-        max_entries: Option<u64>,
-    ) -> PyResult<Self> {
-        let mut config = CacheConfig::default();
-        config.directory = PathBuf::from(directory);
+    fn new(directory: String, max_size: Option<u64>, max_entries: Option<u64>) -> PyResult<Self> {
+        let mut config = CacheConfig {
+            directory: PathBuf::from(directory),
+            ..Default::default()
+        };
         config.max_size = max_size;
         config.max_entries = max_entries;
-        
-        let cache = Cache::new(config)?;
+
+        let cache = DiskCache::new(config)?;
         Ok(Self { cache })
     }
-    
+
     fn get(&self, key: &str) -> PyResult<Option<Vec<u8>>> {
         Ok(self.cache.get(key)?)
     }
-    
+
     #[pyo3(signature = (key, value, expire_time=None, tags=None))]
     fn set(
         &self,
@@ -423,31 +415,31 @@ impl PyCache {
         let tags = tags.unwrap_or_default();
         Ok(self.cache.set(key, value, expire_time, tags)?)
     }
-    
+
     fn delete(&self, key: &str) -> PyResult<bool> {
         Ok(self.cache.delete(key)?)
     }
-    
+
     fn exists(&self, key: &str) -> PyResult<bool> {
         Ok(self.cache.exists(key)?)
     }
-    
+
     fn keys(&self) -> PyResult<Vec<String>> {
         Ok(self.cache.keys()?)
     }
-    
+
     fn clear(&self) -> PyResult<()> {
         Ok(self.cache.clear()?)
     }
-    
+
     fn size(&self) -> PyResult<u64> {
         Ok(self.cache.size()?)
     }
-    
+
     fn vacuum(&self) -> PyResult<()> {
         Ok(self.cache.vacuum()?)
     }
-    
+
     fn stats(&self) -> PyResult<HashMap<String, u64>> {
         let stats = self.cache.stats();
         let mut result = HashMap::new();
@@ -461,8 +453,225 @@ impl PyCache {
         result.insert("entry_count".to_string(), stats.entry_count);
         Ok(result)
     }
-    
+
     fn hit_rate(&self) -> PyResult<f64> {
         Ok(self.cache.stats().hit_rate())
+    }
+}
+
+/// Drop-in replacement for diskcache.Cache
+#[pyclass(name = "Cache")]
+pub struct RustCache {
+    cache: DiskCache,
+}
+
+#[pymethods]
+impl RustCache {
+    #[new]
+    #[pyo3(signature = (directory, **kwargs))]
+    fn new(directory: String, kwargs: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<Self> {
+        let mut config = CacheConfig::default();
+        config.directory = PathBuf::from(directory);
+
+        // Parse kwargs for compatibility with diskcache.Cache
+        if let Some(kwargs) = kwargs {
+            if let Ok(Some(size_limit)) = kwargs.get_item("size_limit") {
+                config.max_size = size_limit.extract::<Option<u64>>()?;
+            }
+
+            if let Ok(Some(count_limit)) = kwargs.get_item("count_limit") {
+                config.max_entries = count_limit.extract::<Option<u64>>()?;
+            }
+        }
+
+        let cache = DiskCache::new(config)?;
+        Ok(Self { cache })
+    }
+
+    fn get(&self, key: &str, default: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<Option<Vec<u8>>> {
+        match self.cache.get(key)? {
+            Some(value) => Ok(Some(value)),
+            None => {
+                if let Some(default) = default {
+                    // Convert default to bytes if needed
+                    if let Ok(bytes) = default.extract::<Vec<u8>>() {
+                        Ok(Some(bytes))
+                    } else {
+                        Ok(None)
+                    }
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    #[pyo3(signature = (key, value, expire=None, read=None, tag=None, retry=None))]
+    fn set(
+        &self,
+        key: &str,
+        value: &[u8],
+        expire: Option<u64>,
+        read: Option<bool>,
+        tag: Option<String>,
+        retry: Option<bool>,
+    ) -> PyResult<bool> {
+        let _ = read; // Unused parameter for compatibility
+        let _ = retry; // Unused parameter for compatibility
+
+        let tags = if let Some(tag) = tag {
+            vec![tag]
+        } else {
+            vec![]
+        };
+
+        self.cache.set(key, value, expire, tags)?;
+        Ok(true)
+    }
+
+    fn delete(&self, key: &str) -> PyResult<bool> {
+        Ok(self.cache.delete(key)?)
+    }
+
+    // Implement __contains__ for 'key in cache' syntax
+    fn __contains__(&self, key: &str) -> PyResult<bool> {
+        Ok(self.cache.exists(key)?)
+    }
+
+    // Implement iterkeys() for compatibility
+    fn iterkeys(&self) -> PyResult<Vec<String>> {
+        Ok(self.cache.keys()?)
+    }
+
+    fn clear(&self) -> PyResult<()> {
+        Ok(self.cache.clear()?)
+    }
+
+    fn stats(&self) -> PyResult<(u64, u64)> {
+        let stats = self.cache.stats();
+        // Return (hits, misses) tuple like diskcache
+        Ok((stats.hits, stats.misses))
+    }
+
+    fn volume(&self) -> PyResult<u64> {
+        Ok(self.cache.size()?)
+    }
+
+    fn __len__(&self) -> PyResult<usize> {
+        let stats = self.cache.stats();
+        Ok(stats.entry_count as usize)
+    }
+}
+
+/// Drop-in replacement for diskcache.FanoutCache
+#[pyclass(name = "FanoutCache")]
+pub struct RustFanoutCache {
+    caches: Vec<RustCache>,
+    shards: usize,
+}
+
+#[pymethods]
+impl RustFanoutCache {
+    #[new]
+    #[pyo3(signature = (directory, shards=8, **kwargs))]
+    fn new(
+        directory: String,
+        shards: Option<usize>,
+        kwargs: Option<&Bound<'_, pyo3::types::PyDict>>,
+    ) -> PyResult<Self> {
+        let shards = shards.unwrap_or(8);
+        let mut caches = Vec::with_capacity(shards);
+
+        for i in 0..shards {
+            let shard_dir = format!("{}/shard_{:03}", directory, i);
+            let cache = RustCache::new(shard_dir, kwargs)?;
+            caches.push(cache);
+        }
+
+        Ok(Self { caches, shards })
+    }
+
+    fn get(&self, key: &str, default: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<Option<Vec<u8>>> {
+        let shard = self.get_shard(key);
+        self.caches[shard].get(key, default)
+    }
+
+    #[pyo3(signature = (key, value, expire=None, read=None, tag=None, retry=None))]
+    fn set(
+        &self,
+        key: &str,
+        value: &[u8],
+        expire: Option<u64>,
+        read: Option<bool>,
+        tag: Option<String>,
+        retry: Option<bool>,
+    ) -> PyResult<bool> {
+        let shard = self.get_shard(key);
+        self.caches[shard].set(key, value, expire, read, tag, retry)
+    }
+
+    fn delete(&self, key: &str) -> PyResult<bool> {
+        let shard = self.get_shard(key);
+        self.caches[shard].delete(key)
+    }
+
+    fn __contains__(&self, key: &str) -> PyResult<bool> {
+        let shard = self.get_shard(key);
+        self.caches[shard].__contains__(key)
+    }
+
+    fn iterkeys(&self) -> PyResult<Vec<String>> {
+        let mut all_keys = Vec::new();
+        for cache in &self.caches {
+            let keys = cache.iterkeys()?;
+            all_keys.extend(keys);
+        }
+        Ok(all_keys)
+    }
+
+    fn clear(&self) -> PyResult<()> {
+        for cache in &self.caches {
+            cache.clear()?;
+        }
+        Ok(())
+    }
+
+    fn stats(&self) -> PyResult<(u64, u64)> {
+        let mut total_hits = 0;
+        let mut total_misses = 0;
+
+        for cache in &self.caches {
+            let (hits, misses) = cache.stats()?;
+            total_hits += hits;
+            total_misses += misses;
+        }
+
+        Ok((total_hits, total_misses))
+    }
+
+    fn volume(&self) -> PyResult<u64> {
+        let mut total_volume = 0;
+        for cache in &self.caches {
+            total_volume += cache.volume()?;
+        }
+        Ok(total_volume)
+    }
+
+    fn __len__(&self) -> PyResult<usize> {
+        let mut total_len = 0;
+        for cache in &self.caches {
+            total_len += cache.__len__()?;
+        }
+        Ok(total_len)
+    }
+}
+
+impl RustFanoutCache {
+    fn get_shard(&self, key: &str) -> usize {
+        use std::collections::hash_map::DefaultHasher;
+
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        (hasher.finish() as usize) % self.shards
     }
 }

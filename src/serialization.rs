@@ -1,7 +1,6 @@
 use crate::error::{CacheError, CacheResult};
 use serde::{Deserialize, Serialize};
 
-
 /// Serialization format options
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SerializationFormat {
@@ -61,9 +60,9 @@ impl JsonSerializer {
 
 impl SerializerImpl for JsonSerializer {
     fn serialize<T: Serialize>(&self, value: &T) -> CacheResult<Vec<u8>> {
-        let json_data = serde_json::to_vec(value)
-            .map_err(|e| CacheError::Serialization(e.to_string()))?;
-        
+        let json_data =
+            serde_json::to_vec(value).map_err(|e| CacheError::Serialization(e.to_string()))?;
+
         match self.compression {
             CompressionType::None => Ok(json_data),
             CompressionType::Lz4 => {
@@ -76,19 +75,16 @@ impl SerializerImpl for JsonSerializer {
             }
         }
     }
-    
+
     fn deserialize<T: for<'de> Deserialize<'de>>(&self, data: &[u8]) -> CacheResult<T> {
         let json_data = match self.compression {
             CompressionType::None => data.to_vec(),
-            CompressionType::Lz4 => {
-                lz4_flex::decompress_size_prepended(data)
-                    .map_err(|e| CacheError::Deserialization(e.to_string()))?
-            }
+            CompressionType::Lz4 => lz4_flex::decompress_size_prepended(data)
+                .map_err(|e| CacheError::Deserialization(e.to_string()))?,
             CompressionType::Zstd => data.to_vec(),
         };
-        
-        serde_json::from_slice(&json_data)
-            .map_err(|e| CacheError::Deserialization(e.to_string()))
+
+        serde_json::from_slice(&json_data).map_err(|e| CacheError::Deserialization(e.to_string()))
     }
 }
 
@@ -106,9 +102,10 @@ impl BincodeSerializer {
 
 impl SerializerImpl for BincodeSerializer {
     fn serialize<T: Serialize>(&self, value: &T) -> CacheResult<Vec<u8>> {
-        let bincode_data = bincode::serialize(value)
-            .map_err(|e| CacheError::Serialization(format!("Bincode serialization error: {:?}", e)))?;
-        
+        let bincode_data = bincode::serialize(value).map_err(|e| {
+            CacheError::Serialization(format!("Bincode serialization error: {:?}", e))
+        })?;
+
         match self.compression {
             CompressionType::None => Ok(bincode_data),
             CompressionType::Lz4 => {
@@ -118,27 +115,23 @@ impl SerializerImpl for BincodeSerializer {
             CompressionType::Zstd => Ok(bincode_data),
         }
     }
-    
+
     fn deserialize<T: for<'de> Deserialize<'de>>(&self, data: &[u8]) -> CacheResult<T> {
         let bincode_data = match self.compression {
             CompressionType::None => data.to_vec(),
-            CompressionType::Lz4 => {
-                lz4_flex::decompress_size_prepended(data)
-                    .map_err(|e| CacheError::Deserialization(e.to_string()))?
-            }
+            CompressionType::Lz4 => lz4_flex::decompress_size_prepended(data)
+                .map_err(|e| CacheError::Deserialization(e.to_string()))?,
             CompressionType::Zstd => data.to_vec(),
         };
-        
-        bincode::deserialize(&bincode_data)
-            .map_err(|e| CacheError::Deserialization(format!("Bincode deserialization error: {:?}", e)))
+
+        bincode::deserialize(&bincode_data).map_err(|e| {
+            CacheError::Deserialization(format!("Bincode deserialization error: {:?}", e))
+        })
     }
 }
 
 /// Factory for creating serializers
-pub fn create_serializer(
-    format: SerializationFormat,
-    compression: CompressionType,
-) -> Serializer {
+pub fn create_serializer(format: SerializationFormat, compression: CompressionType) -> Serializer {
     match format {
         SerializationFormat::Json => Serializer::Json(JsonSerializer::new(compression)),
         SerializationFormat::Bincode => Serializer::Bincode(BincodeSerializer::new(compression)),
@@ -168,7 +161,7 @@ impl CacheEntry {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         Self {
             key,
             size: data.len() as u64,
@@ -180,7 +173,7 @@ impl CacheEntry {
             expire_time,
         }
     }
-    
+
     pub fn update_access(&mut self) {
         self.accessed_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -188,7 +181,7 @@ impl CacheEntry {
             .as_secs();
         self.access_count += 1;
     }
-    
+
     pub fn is_expired(&self) -> bool {
         if let Some(expire_time) = self.expire_time {
             let now = std::time::SystemTime::now()
