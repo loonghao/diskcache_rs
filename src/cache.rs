@@ -488,7 +488,11 @@ impl RustCache {
         Ok(Self { cache })
     }
 
-    fn get(&self, key: &str, default: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<Option<Vec<u8>>> {
+    fn get(
+        &self,
+        key: &str,
+        default: Option<&Bound<'_, pyo3::PyAny>>,
+    ) -> PyResult<Option<Vec<u8>>> {
         match self.cache.get(key)? {
             Some(value) => Ok(Some(value)),
             None => {
@@ -591,7 +595,11 @@ impl RustFanoutCache {
         Ok(Self { caches, shards })
     }
 
-    fn get(&self, key: &str, default: Option<&Bound<'_, pyo3::PyAny>>) -> PyResult<Option<Vec<u8>>> {
+    fn get(
+        &self,
+        key: &str,
+        default: Option<&Bound<'_, pyo3::PyAny>>,
+    ) -> PyResult<Option<Vec<u8>>> {
         let shard = self.get_shard(key);
         self.caches[shard].get(key, default)
     }
