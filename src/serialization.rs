@@ -1,4 +1,5 @@
 use crate::error::{CacheError, CacheResult};
+use bincode::{deserialize, serialize};
 use serde::{Deserialize, Serialize};
 
 /// Serialization format options
@@ -102,7 +103,7 @@ impl BincodeSerializer {
 
 impl SerializerImpl for BincodeSerializer {
     fn serialize<T: Serialize>(&self, value: &T) -> CacheResult<Vec<u8>> {
-        let bincode_data = bincode::serialize(value).map_err(|e| {
+        let bincode_data = serialize(value).map_err(|e| {
             CacheError::Serialization(format!("Bincode serialization error: {:?}", e))
         })?;
 
@@ -124,7 +125,7 @@ impl SerializerImpl for BincodeSerializer {
             CompressionType::Zstd => data.to_vec(),
         };
 
-        bincode::deserialize(&bincode_data).map_err(|e| {
+        deserialize(&bincode_data).map_err(|e| {
             CacheError::Deserialization(format!("Bincode deserialization error: {:?}", e))
         })
     }

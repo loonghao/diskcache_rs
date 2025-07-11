@@ -1,5 +1,6 @@
 use crate::error::{CacheError, CacheResult};
 use crate::serialization::CacheEntry;
+use bincode::{deserialize, serialize};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -210,7 +211,7 @@ impl StorageBackend for FileStorage {
         file.read_to_end(&mut buffer)
             .map_err(|e| CacheError::Io(e))?;
 
-        let entry: CacheEntry = bincode::deserialize(&buffer).map_err(|e| {
+        let entry: CacheEntry = deserialize(&buffer).map_err(|e| {
             CacheError::Deserialization(format!("Storage deserialization error: {:?}", e))
         })?;
 
@@ -226,7 +227,7 @@ impl StorageBackend for FileStorage {
     fn set(&self, key: &str, entry: CacheEntry) -> CacheResult<()> {
         let file_path = self.get_file_path(key);
 
-        let data = bincode::serialize(&entry).map_err(|e| {
+        let data = serialize(&entry).map_err(|e| {
             CacheError::Serialization(format!("Storage serialization error: {:?}", e))
         })?;
 
