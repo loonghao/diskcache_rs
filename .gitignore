@@ -76,6 +76,9 @@ test_*.py
 simple_test.py
 benchmark_results.json
 
+# Keep the new tests/ directory structure
+!tests/
+
 # UV lock file (can be regenerated)
 uv.lock
 

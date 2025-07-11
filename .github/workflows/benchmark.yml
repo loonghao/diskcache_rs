@@ -1,0 +1,113 @@
+name: Performance Benchmark
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'benchmarks/**'
+      - 'Cargo.toml'
+      - 'pyproject.toml'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  benchmark:
+    name: Performance Comparison
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: |
+          uv add diskcache pytest pytest-benchmark
+
+      - name: Build extension (release mode)
+        run: uvx maturin develop --release
+
+      - name: Run performance benchmarks
+        run: |
+          uv run python benchmarks/performance_comparison.py
+
+      - name: Run pytest benchmarks
+        run: |
+          uv run python -m pytest tests/test_performance.py -v -k "benchmark"
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: benchmark_results.json
+        if: always()
+
+      - name: Comment PR with benchmark results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            try {
+              const results = JSON.parse(fs.readFileSync('benchmark_results.json', 'utf8'));
+
+              let comment = '## 📊 Performance Benchmark Results\n\n';
+              comment += '| Benchmark | python-diskcache | diskcache_rs | Winner |\n';
+              comment += '|-----------|------------------|--------------|--------|\n';
+
+              for (const [name, result] of Object.entries(results)) {
+                // Handle both old and new result formats
+                let dcOps, rsOps;
+                if (result.diskcache && result.diskcache_rs) {
+                  // New format with nested operations
+                  if (result.diskcache.get && result.diskcache_rs.get) {
+                    dcOps = result.diskcache.get.ops_per_sec;
+                    rsOps = result.diskcache_rs.get.ops_per_sec;
+                  } else {
+                    dcOps = result.diskcache.ops_per_sec || 0;
+                    rsOps = result.diskcache_rs.ops_per_sec || 0;
+                  }
+                } else {
+                  continue; // Skip malformed results
+                }
+
+                let winner;
+                if (dcOps > rsOps) {
+                  winner = `python-diskcache (${(dcOps/rsOps).toFixed(1)}x)`;
+                } else {
+                  winner = `diskcache_rs (${(rsOps/dcOps).toFixed(1)}x)`;
+                }
+
+                comment += `| ${name} | ${dcOps.toFixed(1)} ops/s | ${rsOps.toFixed(1)} ops/s | ${winner} |\n`;
+              }
+
+              comment += '\n> 💡 **Note**: Performance varies based on storage type and network conditions.\n';
+              comment += '> diskcache_rs is optimized for network filesystems and provides better reliability.\n';
+
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            } catch (error) {
+              console.error('Failed to post benchmark results:', error);
+            }
+
+
