@@ -16,7 +16,7 @@ pub use migration::{detect_diskcache_format, DiskCacheMigrator, MigrationStats};
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn diskcache_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _diskcache_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Add the main cache class
     m.add_class::<cache::PyCache>()?;
 

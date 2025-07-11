@@ -56,7 +56,7 @@ Documentation = "https://github.com/loonghao/diskcache_rs"
 [tool.maturin]
 features = ["pyo3/extension-module"]
 python-source = "python"
-module-name = "diskcache_rs.diskcache_rs"
+module-name = "diskcache_rs._diskcache_rs"
 bindings = "pyo3"
 
 [tool.ruff]
