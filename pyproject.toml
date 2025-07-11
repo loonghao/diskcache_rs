@@ -29,8 +29,25 @@ classifiers = [
 ]
 keywords = ["cache", "disk", "storage", "performance", "rust"]
 dynamic = ["version"]
-dependencies = [
+dependencies = []
+
+[project.optional-dependencies]
+benchmark = [
     "diskcache>=5.6.3",
+    "pytest-benchmark>=5.1.0",
+]
+test = [
+    "pytest>=8.4.1",
+    "pytest-benchmark>=5.1.0",
+    "psutil>=7.0.0",
+]
+dev = [
+    "diskcache>=5.6.3",
+    "pytest>=8.4.1",
+    "pytest-benchmark>=5.1.0",
+    "psutil>=7.0.0" ,
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
 ]
 
 [project.urls]

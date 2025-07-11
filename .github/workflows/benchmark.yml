@@ -37,7 +37,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv add diskcache pytest pytest-benchmark
+          uv add --optional-group benchmark
 
       - name: Build extension (release mode)
         run: uvx maturin develop --release
