@@ -39,7 +39,7 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 memmap2 = "0.9"
 crossbeam = "0.8"
 
-lru = "0.12"
+lru = "0.16"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
