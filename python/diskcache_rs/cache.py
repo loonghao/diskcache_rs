@@ -5,8 +5,8 @@ Python-compatible cache interface for diskcache_rs
 import os
 import pickle
 import time
-from typing import Any, Optional, Union, List, Dict, Iterator
 from pathlib import Path
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 # We'll import the Rust implementation at runtime to avoid circular imports
 _RustCache = None
@@ -195,7 +195,7 @@ class Cache:
         if not self.delete(key):
             raise KeyError(key)
     
-    def keys(self) -> list[str]:
+    def keys(self) -> List[str]:
         """Get list of all cache keys"""
         try:
             return self._cache.keys()
@@ -205,7 +205,7 @@ class Cache:
     def __iter__(self) -> Iterator[str]:
         """Iterate over cache keys"""
         try:
-            return iter(self.keys())
+            return iter(self._cache.keys())
         except Exception:
             return iter([])
     
