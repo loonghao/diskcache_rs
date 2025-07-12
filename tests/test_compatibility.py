@@ -2,10 +2,11 @@
 Compatibility tests with python-diskcache
 """
 
-import pytest
-import tempfile
 import os
 import shutil
+import tempfile
+
+import pytest
 
 
 class TestCompatibility:
@@ -15,10 +16,13 @@ class TestCompatibility:
     def diskcache_available(self):
         """Check if original diskcache is available"""
         try:
-            import diskcache
+            import diskcache  # noqa: F401
+
             return True
         except ImportError:
-            pytest.skip("Original diskcache not available for compatibility testing. Install with: uv add diskcache")
+            pytest.skip(
+                "Original diskcache not available for compatibility testing. Install with: uv add diskcache"
+            )
 
     @pytest.fixture
     def temp_dirs(self):
@@ -30,6 +34,7 @@ class TestCompatibility:
 
         # Cleanup with retry for Windows file locking issues
         import time
+
         for dir_path in [rs_dir, dc_dir]:
             if os.path.exists(dir_path):
                 for attempt in range(3):
@@ -43,7 +48,7 @@ class TestCompatibility:
                             # Final attempt - ignore errors
                             try:
                                 shutil.rmtree(dir_path, ignore_errors=True)
-                            except:
+                            except Exception:
                                 pass
 
     def test_basic_api_compatibility(self, diskcache_available, temp_dirs, sample_data):
@@ -56,30 +61,30 @@ class TestCompatibility:
         # Create both caches
         rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
-        
+
         # Test same operations on both
         test_key = "compatibility_test"
         test_value = sample_data["medium"]
-        
+
         # Set operations
         rs_cache.set(test_key, test_value)
         dc_cache.set(test_key, test_value)
-        
+
         # Get operations
         rs_result = rs_cache.get(test_key)
         dc_result = dc_cache.get(test_key)
-        
+
         assert rs_result == dc_result == test_value
-        
+
         # Exists operations (diskcache uses __contains__)
-        assert rs_cache.exists(test_key) == (test_key in dc_cache) == True
-        
+        assert rs_cache.exists(test_key) == (test_key in dc_cache) is True
+
         # Delete operations
         rs_delete_result = rs_cache.delete(test_key)
         dc_delete_result = dc_cache.delete(test_key)
-        
-        assert rs_delete_result == dc_delete_result == True
-        assert rs_cache.exists(test_key) == (test_key in dc_cache) == False
+
+        assert rs_delete_result == dc_delete_result is True
+        assert rs_cache.exists(test_key) == (test_key in dc_cache) is False
 
         # Close caches to release file handles
         rs_cache.close()
@@ -94,13 +99,13 @@ class TestCompatibility:
 
         rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
-        
+
         # Add same keys to both caches
         test_keys = ["key1", "key2", "key3"]
         for key in test_keys:
             rs_cache.set(key, sample_data["small"])
             dc_cache.set(key, sample_data["small"])
-        
+
         # Get keys from both (diskcache uses iterkeys())
         rs_keys = set(rs_cache.keys())
         dc_keys = set(dc_cache.iterkeys())
@@ -129,7 +134,7 @@ class TestCompatibility:
             key = f"clear_test_{i}"
             rs_cache.set(key, sample_data["small"])
             dc_cache.set(key, sample_data["small"])
-        
+
         # Verify data exists
         assert len(list(rs_cache)) >= 5  # Use iteration instead of keys()
         assert len(list(dc_cache.iterkeys())) >= 5
@@ -155,7 +160,7 @@ class TestCompatibility:
 
         rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
-        
+
         # Get stats from both
         rs_stats = rs_cache.stats()
         dc_stats = dc_cache.stats()
@@ -181,28 +186,28 @@ class TestCompatibility:
 
         rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
-        
+
         nonexistent_key = "this_key_does_not_exist"
-        
+
         # Get nonexistent key
         rs_result = rs_cache.get(nonexistent_key)
         dc_result = dc_cache.get(nonexistent_key)
-        
+
         # Both should return None
         assert rs_result is None
         assert dc_result is None
-        
+
         # Exists check (use __contains__ for compatibility)
-        assert (nonexistent_key in rs_cache) == False
-        assert dc_cache.exists(nonexistent_key) == False
-        
+        assert nonexistent_key not in rs_cache
+        assert not dc_cache.exists(nonexistent_key)
+
         # Delete nonexistent key
         rs_delete = rs_cache.delete(nonexistent_key)
         dc_delete = dc_cache.delete(nonexistent_key)
 
         # Both should return False
-        assert rs_delete == False
-        assert dc_delete == False
+        assert not rs_delete
+        assert not dc_delete
 
         # Close caches to release file handles
         rs_cache.close()
@@ -217,7 +222,7 @@ class TestCompatibility:
 
         rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
-        
+
         # Test different data types
         test_cases = [
             ("binary", sample_data["binary"]),
@@ -225,18 +230,18 @@ class TestCompatibility:
             ("large", sample_data["large"]),
             ("json_like", sample_data["json_like"]),
         ]
-        
+
         for test_name, test_data in test_cases:
             key = f"datatype_test_{test_name}"
-            
+
             # Store in both caches
             rs_cache.set(key, test_data)
             dc_cache.set(key, test_data)
-            
+
             # Retrieve from both
             rs_retrieved = rs_cache.get(key)
             dc_retrieved = dc_cache.get(key)
-            
+
             # Should be identical
             assert rs_retrieved == dc_retrieved == test_data
 
@@ -253,36 +258,38 @@ class TestCompatibility:
 
         rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
-        
+
         unicode_keys = [
             "测试键",  # Chinese
-            "тест",    # Russian
+            "тест",  # Russian
             "key with spaces",
             "key-with-dashes",
         ]
-        
+
         test_value = b"unicode key test"
-        
+
         for key in unicode_keys:
             # Store in both caches
             rs_cache.set(key, test_value)
             dc_cache.set(key, test_value)
-            
+
             # Retrieve from both
             rs_result = rs_cache.get(key)
             dc_result = dc_cache.get(key)
-            
+
             # Should be identical
             assert rs_result == dc_result == test_value
-            
+
             # Exists check (use __contains__ for compatibility)
-            assert (key in rs_cache) == dc_cache.exists(key) == True
+            assert (key in rs_cache) == dc_cache.exists(key) is True
 
         # Close caches to release file handles
         rs_cache.close()
         dc_cache.close()
 
-    def test_overwrite_behavior_compatibility(self, diskcache_available, temp_dirs, sample_data):
+    def test_overwrite_behavior_compatibility(
+        self, diskcache_available, temp_dirs, sample_data
+    ):
         """Test key overwrite behavior compatibility"""
         import diskcache
         from diskcache_rs import Cache
@@ -291,20 +298,20 @@ class TestCompatibility:
 
         rs_cache = Cache(rs_dir)
         dc_cache = diskcache.Cache(dc_dir)
-        
+
         key = "overwrite_test"
-        
+
         # Set initial value
         rs_cache.set(key, sample_data["small"])
         dc_cache.set(key, sample_data["small"])
-        
+
         # Verify initial value
         assert rs_cache.get(key) == dc_cache.get(key) == sample_data["small"]
-        
+
         # Overwrite with different value
         rs_cache.set(key, sample_data["large"])
         dc_cache.set(key, sample_data["large"])
-        
+
         # Verify overwritten value
         assert rs_cache.get(key) == dc_cache.get(key) == sample_data["large"]
 
