@@ -15,6 +15,10 @@ class FastCache:
     This is a drop-in replacement for the standard Cache class that uses
     the high-performance Rust pickle implementation for better performance.
 
+    Note: This implementation prioritizes API compatibility over raw performance.
+    For maximum performance, use the original Cache class which now includes
+    Rust pickle optimizations.
+
     Example:
         >>> cache = FastCache("/tmp/cache", max_size=100*1024*1024)
         >>> cache.set("key", {"data": "value"}, expire=3600)

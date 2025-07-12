@@ -147,13 +147,20 @@ mod tests {
     fn test_memory_cache_basic() {
         let cache = MemoryCache::new(100, 1024 * 1024); // 1MB
 
-        let entry = CacheEntry::new("test_key".to_string(), b"test_value".to_vec(), vec![], None);
+        let entry = CacheEntry::new_inline("test_key".to_string(), b"test_value".to_vec(), vec![], None);
 
         // Test put and get
         cache.put("test_key".to_string(), entry.clone());
         let retrieved = cache.get("test_key");
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().data, entry.data);
+        // Compare the storage data instead of the deprecated data field
+        let retrieved_entry = retrieved.unwrap();
+        match (&retrieved_entry.storage, &entry.storage) {
+            (crate::serialization::StorageMode::Inline(data1), crate::serialization::StorageMode::Inline(data2)) => {
+                assert_eq!(data1, data2);
+            }
+            _ => panic!("Storage modes don't match"),
+        }
 
         // Test contains
         assert!(cache.contains("test_key"));
@@ -169,9 +176,9 @@ mod tests {
     fn test_memory_cache_lru_eviction() {
         let cache = MemoryCache::new(2, 1024); // Small cache
 
-        let entry1 = CacheEntry::new("key1".to_string(), b"value1".to_vec(), vec![], None);
-        let entry2 = CacheEntry::new("key2".to_string(), b"value2".to_vec(), vec![], None);
-        let entry3 = CacheEntry::new("key3".to_string(), b"value3".to_vec(), vec![], None);
+        let entry1 = CacheEntry::new_inline("key1".to_string(), b"value1".to_vec(), vec![], None);
+        let entry2 = CacheEntry::new_inline("key2".to_string(), b"value2".to_vec(), vec![], None);
+        let entry3 = CacheEntry::new_inline("key3".to_string(), b"value3".to_vec(), vec![], None);
 
         cache.put("key1".to_string(), entry1);
         cache.put("key2".to_string(), entry2);
@@ -186,7 +193,7 @@ mod tests {
     fn test_memory_cache_size_limit() {
         let cache = MemoryCache::new(100, 50); // 50 bytes limit
 
-        let large_entry = CacheEntry::new(
+        let large_entry = CacheEntry::new_inline(
             "large".to_string(),
             vec![0u8; 100], // 100 bytes
             vec![],
@@ -197,7 +204,7 @@ mod tests {
         cache.put("large".to_string(), large_entry);
         assert!(!cache.contains("large"));
 
-        let small_entry = CacheEntry::new(
+        let small_entry = CacheEntry::new_inline(
             "small".to_string(),
             vec![0u8; 20], // 20 bytes
             vec![],

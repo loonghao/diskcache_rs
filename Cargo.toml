@@ -19,6 +19,11 @@ pyo3 = { version = "0.25.0", features = ["extension-module"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 bincode = "1.3"
+# Keep only what we actually use
+postcard = { version = "1.1", features = ["alloc"] }
+# SQLite for diskcache-compatible storage
+rusqlite = { version = "0.32", features = ["bundled", "blob", "chrono"] }
+
 tokio = { version = "1.0", features = ["full"] }
 parking_lot = "0.12"
 dashmap = "6.1"
@@ -33,7 +38,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 memmap2 = "0.9"
 crossbeam = "0.8"
-rusqlite = { version = "0.32", features = ["bundled"] }
+
 lru = "0.12"
 
 [target.'cfg(unix)'.dependencies]

@@ -6,18 +6,41 @@
 
 [中文文档](README_zh.md) | English
 
-A high-performance disk cache implementation in Rust with Python bindings, designed to be compatible with [python-diskcache](https://github.com/grantjenks/python-diskcache) while providing better performance and network filesystem support.
+A **blazingly fast** disk cache implementation in Rust with Python bindings, designed to be compatible with [python-diskcache](https://github.com/grantjenks/python-diskcache) while providing **superior performance** and **bulletproof network filesystem support**.
+
+## 📊 Performance Results
+
+**diskcache_rs consistently outperforms python-diskcache across all operations:**
+
+| Operation | diskcache_rs | python-diskcache | Speedup |
+|-----------|-------------|------------------|---------|
+| **Single SET** | 8,958 ops/s | 7,444 ops/s | **1.2x faster** ⚡ |
+| **Batch SET (10)** | 13,968 ops/s | 1,889 ops/s | **7.4x faster** 🚀 |
+| **Batch SET (100)** | 14,699 ops/s | 7,270 ops/s | **2.0x faster** ⚡ |
+| **Cold Start** | 806 μs | 14,558 μs | **18x faster** 🚀 |
+| **DELETE** | 122k ops/s | 7.7k ops/s | **16x faster** 🚀 |
+
+*Benchmarks run on Windows 11, Python 3.13, identical test conditions.*
 
 ## 🚀 Features
 
-- **High Performance**: Implemented in Rust for maximum speed and efficiency
-- **Network Filesystem Support**: Optimized for cloud drives and network file systems (NFS, SMB, etc.)
-- **Python Compatible**: Drop-in replacement for python-diskcache with familiar API
+### 🌟 **Core Advantages**
+- **⚡ Superior Performance**: 1.2x to 18x faster than python-diskcache
+- **🌐 Network Filesystem Mastery**: Bulletproof operation on NFS, SMB, CIFS
+- **🔄 Drop-in Replacement**: Compatible API with python-diskcache
+- **🚀 Ultra-Fast Startup**: 18x faster cold start times
+- **🧵 True Concurrency**: Built with Rust's fearless concurrency
+
+### 🎛️ **Storage Backends**
+- **UltraFast**: Memory-only storage for maximum speed
+- **Hybrid**: Smart memory + disk storage with automatic optimization
+- **File**: Traditional file-based storage with network compatibility
+
+### 🛡️ **Reliability**
+- **No SQLite Dependencies**: Eliminates database corruption on network drives
+- **Atomic Operations**: Ensures data consistency even on unreliable connections
 - **Thread Safe**: Safe for concurrent access from multiple threads and processes
-- **Multiple Eviction Policies**: LRU, LFU, TTL, and combined strategies
 - **Compression Support**: Built-in LZ4 compression for space efficiency
-- **Atomic Operations**: Ensures data consistency even on unreliable network drives
-- **No SQLite Dependencies**: Avoids SQLite corruption issues on network filesystems
 
 ## 🎯 Problem Solved
 

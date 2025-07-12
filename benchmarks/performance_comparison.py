@@ -77,7 +77,7 @@ def benchmark_workload(cache_dir, implementation="diskcache", operations=10000):
     if implementation == "diskcache":
         cache = diskcache.Cache(cache_dir)
     else:
-        cache = diskcache_rs.PyCache(cache_dir)
+        cache = diskcache_rs.Cache(cache_dir)
 
     # Calculate operation counts (following diskcache ratios)
     delete_count = max(1, operations // 100)  # ~1%
@@ -155,7 +155,7 @@ def benchmark_large_values(cache_dir, implementation="diskcache", operations=100
     if implementation == "diskcache":
         cache = diskcache.Cache(cache_dir)
     else:
-        cache = diskcache_rs.PyCache(cache_dir)
+        cache = diskcache_rs.Cache(cache_dir)
 
     # 10KB value
     large_data = b"x" * (10 * 1024)

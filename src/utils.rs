@@ -300,7 +300,7 @@ mod tests {
         stats.hits = 80;
         stats.misses = 20;
 
-        assert_eq!(stats.hit_rate(), 0.8);
-        assert_eq!(stats.miss_rate(), 0.2);
+        assert!((stats.hit_rate() - 0.8).abs() < f64::EPSILON);
+        assert!((stats.miss_rate() - 0.2).abs() < f64::EPSILON);
     }
 }

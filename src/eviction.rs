@@ -253,21 +253,91 @@ impl EvictionPolicy for TtlEviction {
     }
 }
 
+/// Least Recently Stored eviction policy - removes oldest stored items
+/// This policy does NOT track access times, only store times (like diskcache default)
+pub struct LeastRecentlyStoredEviction {
+    store_order: Arc<RwLock<BTreeMap<u64, String>>>,
+    key_to_time: Arc<RwLock<HashMap<String, u64>>>,
+    counter: Arc<RwLock<u64>>,
+}
+
+impl LeastRecentlyStoredEviction {
+    #[allow(dead_code)]
+    pub fn new() -> Self {
+        Self {
+            store_order: Arc::new(RwLock::new(BTreeMap::new())),
+            key_to_time: Arc::new(RwLock::new(HashMap::new())),
+            counter: Arc::new(RwLock::new(0)),
+        }
+    }
+
+    fn get_next_counter(&self) -> u64 {
+        let mut counter = self.counter.write();
+        *counter += 1;
+        *counter
+    }
+}
+
+impl EvictionPolicy for LeastRecentlyStoredEviction {
+    fn on_access(&self, _key: &str, _entry: &CacheEntry) {
+        // LeastRecentlyStored doesn't track access times - this is the key optimization!
+    }
+
+    fn on_insert(&self, key: &str, _entry: &CacheEntry) {
+        let new_time = self.get_next_counter();
+
+        // Remove old entry if exists
+        if let Some(old_time) = self.key_to_time.read().get(key) {
+            self.store_order.write().remove(old_time);
+        }
+
+        // Insert new entry with store time
+        self.store_order.write().insert(new_time, key.to_string());
+        self.key_to_time.write().insert(key.to_string(), new_time);
+    }
+
+    fn on_remove(&self, key: &str) {
+        if let Some(time) = self.key_to_time.write().remove(key) {
+            self.store_order.write().remove(&time);
+        }
+    }
+
+    fn select_victims(&self, count: usize) -> Vec<String> {
+        let store_order = self.store_order.read();
+        store_order.values().take(count).cloned().collect()
+    }
+
+    fn clear(&self) {
+        self.store_order.write().clear();
+        self.key_to_time.write().clear();
+    }
+}
+
 /// Combined eviction policy that uses multiple strategies
 pub struct CombinedEviction {
     lru: LruEviction,
     lfu: LfuEviction,
     ttl: TtlEviction,
+    least_recently_stored: LeastRecentlyStoredEviction,
     primary_strategy: EvictionStrategy,
 }
 
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
 pub enum EvictionStrategy {
+    /// No eviction policy - items are never automatically removed
+    None,
+    /// Least Recently Used - tracks access time, updates on every get
     Lru,
+    /// Least Frequently Used - tracks access count, updates on every get
     Lfu,
+    /// Time To Live - only removes expired items, no access tracking
     Ttl,
+    /// Least Recently Stored - removes oldest stored items, no access tracking (like diskcache default)
+    LeastRecentlyStored,
+    /// Combined LRU + TTL
     LruTtl,
+    /// Combined LFU + TTL
     LfuTtl,
 }
 
@@ -278,6 +348,7 @@ impl CombinedEviction {
             lru: LruEviction::new(),
             lfu: LfuEviction::new(),
             ttl: TtlEviction::new(),
+            least_recently_stored: LeastRecentlyStoredEviction::new(),
             primary_strategy: strategy,
         }
     }
@@ -292,7 +363,11 @@ impl EvictionPolicy for CombinedEviction {
             EvictionStrategy::Lfu | EvictionStrategy::LfuTtl => {
                 self.lfu.on_access(key, entry);
             }
-            EvictionStrategy::Ttl => {}
+            EvictionStrategy::Ttl
+            | EvictionStrategy::LeastRecentlyStored
+            | EvictionStrategy::None => {
+                // These strategies don't track access times - key performance optimization!
+            }
         }
 
         if matches!(
@@ -304,13 +379,33 @@ impl EvictionPolicy for CombinedEviction {
     }
 
     fn on_insert(&self, key: &str, entry: &CacheEntry) {
-        self.on_access(key, entry);
+        // For insert, we need to track in the appropriate strategy
+        match self.primary_strategy {
+            EvictionStrategy::Lru | EvictionStrategy::LruTtl => {
+                self.lru.on_insert(key, entry);
+            }
+            EvictionStrategy::Lfu | EvictionStrategy::LfuTtl => {
+                self.lfu.on_insert(key, entry);
+            }
+            EvictionStrategy::LeastRecentlyStored => {
+                self.least_recently_stored.on_insert(key, entry);
+            }
+            EvictionStrategy::Ttl | EvictionStrategy::None => {}
+        }
+
+        if matches!(
+            self.primary_strategy,
+            EvictionStrategy::LruTtl | EvictionStrategy::LfuTtl | EvictionStrategy::Ttl
+        ) {
+            self.ttl.on_insert(key, entry);
+        }
     }
 
     fn on_remove(&self, key: &str) {
         self.lru.on_remove(key);
         self.lfu.on_remove(key);
         self.ttl.on_remove(key);
+        self.least_recently_stored.on_remove(key);
     }
 
     fn select_victims(&self, count: usize) -> Vec<String> {
@@ -326,7 +421,10 @@ impl EvictionPolicy for CombinedEviction {
         let additional_victims = match self.primary_strategy {
             EvictionStrategy::Lru | EvictionStrategy::LruTtl => self.lru.select_victims(remaining),
             EvictionStrategy::Lfu | EvictionStrategy::LfuTtl => self.lfu.select_victims(remaining),
-            EvictionStrategy::Ttl => Vec::new(),
+            EvictionStrategy::LeastRecentlyStored => {
+                self.least_recently_stored.select_victims(remaining)
+            }
+            EvictionStrategy::Ttl | EvictionStrategy::None => Vec::new(),
         };
 
         victims.extend(additional_victims);
@@ -337,5 +435,6 @@ impl EvictionPolicy for CombinedEviction {
         self.lru.clear();
         self.lfu.clear();
         self.ttl.clear();
+        self.least_recently_stored.clear();
     }
 }

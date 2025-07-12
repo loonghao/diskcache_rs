@@ -2,6 +2,8 @@ use crate::error::{CacheError, CacheResult};
 use bincode::{deserialize, serialize};
 use serde::{Deserialize, Serialize};
 
+// Note: high_performance module removed to reduce dependencies
+
 /// Serialization format options
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SerializationFormat {
@@ -147,11 +149,20 @@ pub fn create_serializer(format: SerializationFormat, compression: CompressionTy
     }
 }
 
+/// Storage mode for cache entries
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum StorageMode {
+    /// Data stored inline in the entry (for small data)
+    Inline(Vec<u8>),
+    /// Data stored in a separate file (for large data)
+    File(String), // filename
+}
+
 /// Metadata for cached entries
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheEntry {
     pub key: String,
-    pub data: Vec<u8>,
+    pub storage: StorageMode,
     pub created_at: u64,
     pub accessed_at: u64,
     pub access_count: u64,
@@ -161,7 +172,40 @@ pub struct CacheEntry {
 }
 
 impl CacheEntry {
-    pub fn new(key: String, data: Vec<u8>, tags: Vec<String>, expire_time: Option<u64>) -> Self {
+    /// Create a new cache entry with inline storage
+    pub fn new_inline(
+        key: String,
+        data: Vec<u8>,
+        tags: Vec<String>,
+        expire_time: Option<u64>,
+    ) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let size = data.len() as u64;
+
+        Self {
+            key,
+            storage: StorageMode::Inline(data),
+            created_at: now,
+            accessed_at: now,
+            access_count: 0,
+            size,
+            tags,
+            expire_time,
+        }
+    }
+
+    /// Create a new cache entry with file storage
+    pub fn new_file(
+        key: String,
+        filename: String,
+        size: u64,
+        tags: Vec<String>,
+        expire_time: Option<u64>,
+    ) -> Self {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -169,14 +213,40 @@ impl CacheEntry {
 
         Self {
             key,
-            size: data.len() as u64,
-            data,
+            storage: StorageMode::File(filename),
             created_at: now,
             accessed_at: now,
-            access_count: 1,
+            access_count: 0,
+            size,
             tags,
             expire_time,
         }
+    }
+
+    /// Create entry based on data size and threshold (backward compatibility)
+    pub fn new(key: String, data: Vec<u8>, tags: Vec<String>, expire_time: Option<u64>) -> Self {
+        Self::new_inline(key, data, tags, expire_time)
+    }
+
+    /// Get the data from the entry, regardless of storage mode
+    pub fn get_data(&self) -> Option<&[u8]> {
+        match &self.storage {
+            StorageMode::Inline(data) => Some(data),
+            StorageMode::File(_) => None, // Caller needs to read from file
+        }
+    }
+
+    /// Get the filename if stored as file
+    pub fn get_filename(&self) -> Option<&str> {
+        match &self.storage {
+            StorageMode::Inline(_) => None,
+            StorageMode::File(filename) => Some(filename),
+        }
+    }
+
+    /// Check if data is stored inline
+    pub fn is_inline(&self) -> bool {
+        matches!(self.storage, StorageMode::Inline(_))
     }
 
     pub fn update_access(&mut self) {
