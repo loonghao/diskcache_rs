@@ -40,7 +40,7 @@ jobs:
         env:
           PYTHONUNBUFFERED: 1
       - name: Run basic functionality tests
-        run: uv run python -c "import diskcache_rs; print(\"diskcache_rs imported successfully\")"
+        run: uv run python -c 'import diskcache_rs; print("diskcache_rs imported successfully")'
 
   # Code formatting and linting
   lint:

@@ -151,9 +151,11 @@ class TestRustPicklePerformance:
         total_time = set_time + get_time
 
         # Avoid division by zero in performance reporting
-        set_ops_per_sec = num_operations / set_time if set_time > 0 else float('inf')
-        get_ops_per_sec = num_operations / get_time if get_time > 0 else float('inf')
-        total_ops_per_sec = (2 * num_operations) / total_time if total_time > 0 else float('inf')
+        set_ops_per_sec = num_operations / set_time if set_time > 0 else float("inf")
+        get_ops_per_sec = num_operations / get_time if get_time > 0 else float("inf")
+        total_ops_per_sec = (
+            (2 * num_operations) / total_time if total_time > 0 else float("inf")
+        )
 
         print(f"Set operations: {set_time:.3f}s ({set_ops_per_sec:.1f} ops/sec)")
         print(f"Get operations: {get_time:.3f}s ({get_ops_per_sec:.1f} ops/sec)")

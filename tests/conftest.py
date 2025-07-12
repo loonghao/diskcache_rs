@@ -2,12 +2,12 @@
 Pytest configuration and fixtures for diskcache_rs tests
 """
 
+import gc
 import os
+import platform
 import shutil
 import tempfile
 import time
-import gc
-import platform
 
 import pytest
 
