@@ -103,6 +103,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "network: marks tests that require network access",
     "cloud_drive: marks tests that require cloud drive access",
+    "docker: marks tests that require Docker (deselect with '-m \"not docker\"')",
 ]
 filterwarnings = [
     "error",

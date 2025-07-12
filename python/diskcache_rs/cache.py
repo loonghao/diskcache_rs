@@ -168,16 +168,12 @@ class Cache:
         except Exception:
             return False
     
-    def exists(self, key: str) -> bool:
+    def __contains__(self, key: str) -> bool:
         """Check if key exists in cache"""
         try:
             return self._cache.exists(key)
         except Exception:
             return False
-
-    def __contains__(self, key: str) -> bool:
-        """Check if key exists in cache"""
-        return self.exists(key)
     
     def __getitem__(self, key: str) -> Any:
         """Get item using [] syntax"""
@@ -197,8 +193,18 @@ class Cache:
     
     def __iter__(self) -> Iterator[str]:
         """Iterate over cache keys"""
-        return iter(self.keys())
+        try:
+            return iter(self._cache.keys())
+        except Exception:
+            return iter([])
     
+    def __len__(self) -> int:
+        """Get number of items in cache"""
+        try:
+            return len(self._cache.keys())
+        except Exception:
+            return 0
+
     def keys(self) -> List[str]:
         """Get list of all cache keys"""
         try:
@@ -206,13 +212,14 @@ class Cache:
         except Exception:
             return []
 
-    def __len__(self) -> int:
-        """Get number of items in cache"""
-        try:
-            return len(self.keys())
-        except Exception:
-            return 0
-    
+    def iterkeys(self) -> Iterator[str]:
+        """Iterate over cache keys (diskcache compatibility)"""
+        return iter(self.keys())
+
+    def exists(self, key: str) -> bool:
+        """Check if key exists in cache (diskcache compatibility)"""
+        return key in self
+
     def clear(self) -> int:
         """
         Clear all items from cache
@@ -472,7 +479,18 @@ class FanoutCache:
     def __len__(self) -> int:
         """Get total number of items across all shards"""
         return sum(len(cache) for cache in self._caches)
-    
+
+    def keys(self) -> List[str]:
+        """Get list of all cache keys across all shards"""
+        all_keys = []
+        for cache in self._caches:
+            all_keys.extend(cache.keys())
+        return all_keys
+
+    def iterkeys(self) -> Iterator[str]:
+        """Iterate over cache keys (diskcache compatibility)"""
+        return iter(self.keys())
+
     def clear(self) -> int:
         """Clear all items from all shards"""
         return sum(cache.clear() for cache in self._caches)

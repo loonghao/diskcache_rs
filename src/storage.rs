@@ -210,8 +210,7 @@ impl StorageBackend for FileStorage {
 
         let mut file = File::open(&file_path).map_err(CacheError::Io)?;
         let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer)
-            .map_err(CacheError::Io)?;
+        file.read_to_end(&mut buffer).map_err(CacheError::Io)?;
 
         let entry: CacheEntry = deserialize(&buffer).map_err(|e| {
             CacheError::Deserialization(format!("Storage deserialization error: {:?}", e))

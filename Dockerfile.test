@@ -1,0 +1,41 @@
+# Test environment Dockerfile for diskcache_rs
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    nfs-common \
+    cifs-utils \
+    iproute2 \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install uv for Python package management
+RUN pip install uv
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy project files
+COPY . .
+
+# Install Python dependencies
+RUN uv sync --group test
+
+# Install Rust dependencies and build
+RUN cargo build --release
+
+# Build Python extension
+RUN uv run maturin develop --release
+
+# Create mount points for network filesystems
+RUN mkdir -p /mnt/nfs /mnt/smb
+
+# Default command
+CMD ["uv", "run", "--group", "test", "pytest", "tests/test_docker_network.py", "-v"]

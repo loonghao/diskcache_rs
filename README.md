@@ -199,7 +199,48 @@ let config = CacheConfig {
 let cache = Cache::new(config)?;
 ```
 
-## 🤝 Contributing
+## � Testing
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run --group test pytest
+
+# Run specific test categories
+uv run --group test pytest -m "not docker"  # Skip Docker tests
+uv run --group test pytest -m "docker"      # Only Docker tests
+uv run --group test pytest -m "network"     # Network filesystem tests
+
+# Run compatibility tests
+uv run --group test pytest tests/test_compatibility.py -v
+```
+
+### Docker Network Testing
+
+For comprehensive network filesystem testing, we provide Docker-based simulation:
+
+```bash
+# Run Docker network tests (requires Docker)
+./scripts/test-docker-network.sh
+
+# Or manually with Docker Compose
+docker-compose -f docker-compose.test.yml up --build
+```
+
+The Docker tests simulate:
+- NFS server environments
+- SMB/CIFS server environments
+- Network latency conditions
+- Concurrent access scenarios
+
+### Cross-Platform Network Testing
+
+The test suite automatically detects and tests available network paths:
+- **Windows**: UNC paths, mapped drives, cloud sync folders
+- **Linux/macOS**: NFS mounts, SMB mounts, cloud sync folders
+
+## �🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch

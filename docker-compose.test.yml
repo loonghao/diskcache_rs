@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # NFS Server for testing
+  nfs-server:
+    image: erichough/nfs-server:2.2.1
+    container_name: diskcache-nfs-test
+    privileged: true
+    ports:
+      - "2049:2049"
+    volumes:
+      - ./test-exports:/exports
+    environment:
+      - NFS_EXPORT_0=/exports *(rw,sync,no_subtree_check,no_root_squash)
+    networks:
+      - test-network
+
+  # SMB/CIFS Server for testing
+  smb-server:
+    image: dperson/samba
+    container_name: diskcache-smb-test
+    ports:
+      - "445:445"
+    volumes:
+      - ./test-shares:/shared
+    environment:
+      - USER=testuser;testpass
+      - SHARE=shared;/shared;yes;no;no;testuser
+    networks:
+      - test-network
+
+  # Network delay simulator
+  network-delay:
+    image: alpine:latest
+    container_name: diskcache-network-delay
+    command: >
+      sh -c "
+        apk add --no-cache iproute2 &&
+        tc qdisc add dev eth0 root netem delay 100ms &&
+        sleep infinity
+      "
+    privileged: true
+    networks:
+      - test-network
+
+  # Test runner container
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: diskcache-test-runner
+    volumes:
+      - .:/workspace
+      - ./test-exports:/mnt/nfs
+      - ./test-shares:/mnt/smb
+    working_dir: /workspace
+    depends_on:
+      - nfs-server
+      - smb-server
+    networks:
+      - test-network
+    environment:
+      - RUST_LOG=debug
+      - PYTHONPATH=/workspace/python
+
+networks:
+  test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  test-exports:
+    driver: local
+  test-shares:
+    driver: local

@@ -149,17 +149,15 @@ class TestPerformance:
 
     def test_cache_size_performance(self, temp_cache_dir):
         """Test performance with different cache sizes"""
-        import diskcache_rs
-        
+        from diskcache_rs import Cache
+
         cache_configs = [
             (1024 * 1024, 1000),      # 1MB, 1K entries
             (10 * 1024 * 1024, 5000), # 10MB, 5K entries
             (100 * 1024 * 1024, 10000), # 100MB, 10K entries
         ]
-        
+
         results = []
-        
-        from diskcache_rs import Cache
 
         for max_size, max_entries in cache_configs:
             cache = Cache(temp_cache_dir, max_size=max_size, max_entries=max_entries)

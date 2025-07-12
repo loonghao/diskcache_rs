@@ -1,5 +1,8 @@
 """
 Network filesystem specific tests for diskcache_rs
+
+This module contains legacy network filesystem tests.
+For comprehensive cross-platform network testing, see test_cross_platform_network.py
 """
 
 import pytest
@@ -8,22 +11,29 @@ import time
 import threading
 import concurrent.futures
 from pathlib import Path
+import platform
 
 
 class TestNetworkFilesystem:
     """Test cache behavior on network filesystems"""
 
-    @pytest.mark.skipif(not os.path.exists("Z:\\"), reason="Cloud drive Z: not available")
+    @pytest.mark.skipif(
+        not (platform.system() == "Windows" and os.path.exists("Z:\\")),
+        reason="Windows cloud drive Z: not available"
+    )
     def test_cloud_drive_basic_operations(self, cloud_cache, sample_data):
-        """Test basic operations on cloud drive"""
+        """Test basic operations on cloud drive (Windows-specific)"""
         # Test set and get
         cloud_cache.set("cloud_test", sample_data["medium"])
         retrieved = cloud_cache.get("cloud_test")
         assert retrieved == sample_data["medium"]
 
-    @pytest.mark.skipif(not os.path.exists("Z:\\"), reason="Cloud drive Z: not available")
+    @pytest.mark.skipif(
+        not (platform.system() == "Windows" and os.path.exists("Z:\\")),
+        reason="Windows cloud drive Z: not available"
+    )
     def test_cloud_drive_persistence(self, cloud_cache_dir, sample_data):
-        """Test data persistence across cache instances on cloud drive"""
+        """Test data persistence across cache instances on cloud drive (Windows-specific)"""
         from diskcache_rs import Cache
 
         # Create first cache instance and store data
@@ -35,9 +45,12 @@ class TestNetworkFilesystem:
         retrieved = cache2.get("persistent_key")
         assert retrieved == sample_data["large"]
 
-    @pytest.mark.skipif(not os.path.exists("Z:\\"), reason="Cloud drive Z: not available")
+    @pytest.mark.skipif(
+        not (platform.system() == "Windows" and os.path.exists("Z:\\")),
+        reason="Windows cloud drive Z: not available"
+    )
     def test_cloud_drive_concurrent_access(self, cloud_cache, sample_data):
-        """Test concurrent access on cloud drive"""
+        """Test concurrent access on cloud drive (Windows-specific)"""
         def worker(worker_id):
             """Worker function for concurrent testing"""
             results = []
@@ -65,9 +78,12 @@ class TestNetworkFilesystem:
         # All workers should succeed
         assert all(results)
 
-    @pytest.mark.skipif(not os.path.exists("Z:\\"), reason="Cloud drive Z: not available")
+    @pytest.mark.skipif(
+        not (platform.system() == "Windows" and os.path.exists("Z:\\")),
+        reason="Windows cloud drive Z: not available"
+    )
     def test_cloud_drive_large_files(self, cloud_cache):
-        """Test handling of large files on cloud drive"""
+        """Test handling of large files on cloud drive (Windows-specific)"""
         # Create a 1MB file
         large_data = b"x" * (1024 * 1024)
         
@@ -87,11 +103,11 @@ class TestNetworkFilesystem:
         # This test would need actual UNC paths to be meaningful
         # For now, just test that the cache can handle UNC-like paths
         unc_like_path = temp_cache_dir.replace("\\", "\\\\")
-        
+
         # This should not crash
         try:
-            import diskcache_rs
-            cache = diskcache_rs.PyCache(temp_cache_dir)  # Use regular path for now
+            from diskcache_rs import Cache
+            cache = Cache(temp_cache_dir)  # Use regular path for now
             cache.set("unc_test", b"test data")
             assert cache.get("unc_test") == b"test data"
         except Exception as e:
@@ -148,9 +164,12 @@ class TestNetworkFilesystem:
         for key in atomic_keys:
             assert cache.get(key) == sample_data["small"]
 
-    @pytest.mark.skipif(not os.path.exists("Z:\\"), reason="Cloud drive Z: not available")
+    @pytest.mark.skipif(
+        not (platform.system() == "Windows" and os.path.exists("Z:\\")),
+        reason="Windows cloud drive Z: not available"
+    )
     def test_cloud_drive_error_recovery(self, cloud_cache, sample_data):
-        """Test error recovery on cloud drive"""
+        """Test error recovery on cloud drive (Windows-specific)"""
         # Store some data
         cloud_cache.set("recovery_test", sample_data["medium"])
         
