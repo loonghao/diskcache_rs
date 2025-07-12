@@ -147,7 +147,8 @@ mod tests {
     fn test_memory_cache_basic() {
         let cache = MemoryCache::new(100, 1024 * 1024); // 1MB
 
-        let entry = CacheEntry::new_inline("test_key".to_string(), b"test_value".to_vec(), vec![], None);
+        let entry =
+            CacheEntry::new_inline("test_key".to_string(), b"test_value".to_vec(), vec![], None);
 
         // Test put and get
         cache.put("test_key".to_string(), entry.clone());
@@ -156,7 +157,10 @@ mod tests {
         // Compare the storage data instead of the deprecated data field
         let retrieved_entry = retrieved.unwrap();
         match (&retrieved_entry.storage, &entry.storage) {
-            (crate::serialization::StorageMode::Inline(data1), crate::serialization::StorageMode::Inline(data2)) => {
+            (
+                crate::serialization::StorageMode::Inline(data1),
+                crate::serialization::StorageMode::Inline(data2),
+            ) => {
                 assert_eq!(data1, data2);
             }
             _ => panic!("Storage modes don't match"),

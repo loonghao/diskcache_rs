@@ -271,7 +271,13 @@ class TestOfficialBenchmarks:
         if not DISKCACHE_AVAILABLE:
             pytest.skip("diskcache not available")
         cache_dir = os.path.join(temp_cache_dir, "python_cache")
-        return diskcache.Cache(cache_dir)
+        cache = diskcache.Cache(cache_dir)
+        yield cache
+        # Explicitly close the cache to release file locks on Windows
+        try:
+            cache.close()
+        except Exception:
+            pass
 
     def test_single_access_workload_rust(self, benchmark, rust_cache):
         """
@@ -372,7 +378,13 @@ class TestBenchmarks:
         if not DISKCACHE_AVAILABLE:
             pytest.skip("diskcache not available")
         cache_dir = os.path.join(temp_cache_dir, "python_cache")
-        return diskcache.Cache(cache_dir)
+        cache = diskcache.Cache(cache_dir)
+        yield cache
+        # Explicitly close the cache to release file locks on Windows
+        try:
+            cache.close()
+        except Exception:
+            pass
 
     def test_benchmark_rust_cache_set(self, benchmark, rust_cache):
         """Benchmark Rust cache set operations"""

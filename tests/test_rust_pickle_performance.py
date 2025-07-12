@@ -103,12 +103,16 @@ class TestRustPicklePerformance:
         print(f"Standard pickle: {standard_time:.3f}s")
         print(f"Rust pickle: {rust_time:.3f}s")
 
-        if rust_time < standard_time:
-            speedup = standard_time / rust_time
-            print(f"Rust pickle is {speedup:.2f}x faster")
+        # Avoid division by zero
+        if rust_time > 0 and standard_time > 0:
+            if rust_time < standard_time:
+                speedup = standard_time / rust_time
+                print(f"Rust pickle is {speedup:.2f}x faster")
+            else:
+                slowdown = rust_time / standard_time
+                print(f"Rust pickle is {slowdown:.2f}x slower")
         else:
-            slowdown = rust_time / standard_time
-            print(f"Rust pickle is {slowdown:.2f}x slower")
+            print("Performance comparison skipped due to very fast execution times")
 
         # For now, we just ensure Rust pickle works correctly
         # Performance may vary depending on implementation
@@ -146,15 +150,14 @@ class TestRustPicklePerformance:
 
         total_time = set_time + get_time
 
-        print(
-            f"Set operations: {set_time:.3f}s ({num_operations / set_time:.1f} ops/sec)"
-        )
-        print(
-            f"Get operations: {get_time:.3f}s ({num_operations / get_time:.1f} ops/sec)"
-        )
-        print(
-            f"Total: {total_time:.3f}s ({2 * num_operations / total_time:.1f} ops/sec)"
-        )
+        # Avoid division by zero in performance reporting
+        set_ops_per_sec = num_operations / set_time if set_time > 0 else float('inf')
+        get_ops_per_sec = num_operations / get_time if get_time > 0 else float('inf')
+        total_ops_per_sec = (2 * num_operations) / total_time if total_time > 0 else float('inf')
+
+        print(f"Set operations: {set_time:.3f}s ({set_ops_per_sec:.1f} ops/sec)")
+        print(f"Get operations: {get_time:.3f}s ({get_ops_per_sec:.1f} ops/sec)")
+        print(f"Total: {total_time:.3f}s ({total_ops_per_sec:.1f} ops/sec)")
 
         # Ensure reasonable performance
         assert set_time < 10.0  # Should complete within 10 seconds

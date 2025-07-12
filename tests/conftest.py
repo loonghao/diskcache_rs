@@ -5,8 +5,52 @@ Pytest configuration and fixtures for diskcache_rs tests
 import os
 import shutil
 import tempfile
+import time
+import gc
+import platform
 
 import pytest
+
+
+def force_cleanup_directory(directory):
+    """Force cleanup of directory, handling Windows file locks"""
+    if not os.path.exists(directory):
+        return
+
+    # Force garbage collection to release any file handles
+    gc.collect()
+
+    # On Windows, wait a bit for file handles to be released
+    if platform.system() == "Windows":
+        time.sleep(0.1)
+
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            shutil.rmtree(directory)
+            break
+        except (OSError, PermissionError) as e:
+            if attempt == max_attempts - 1:
+                # Last attempt failed, log the error but don't fail the test
+                print(f"Warning: Could not clean up {directory}: {e}")
+                break
+
+            # Wait and try again
+            time.sleep(0.2 * (attempt + 1))
+            gc.collect()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_after_test():
+    """Cleanup fixture that runs after each test"""
+    yield
+
+    # Force garbage collection to release file handles
+    gc.collect()
+
+    # On Windows, give a bit more time for file handles to be released
+    if platform.system() == "Windows":
+        time.sleep(0.05)
 
 
 @pytest.fixture
@@ -14,9 +58,8 @@ def temp_cache_dir():
     """Create a temporary directory for cache testing"""
     temp_dir = tempfile.mkdtemp(prefix="diskcache_rs_test_")
     yield temp_dir
-    # Cleanup
-    if os.path.exists(temp_dir):
-        shutil.rmtree(temp_dir)
+    # Cleanup with retry logic for Windows
+    force_cleanup_directory(temp_dir)
 
 
 @pytest.fixture
@@ -51,9 +94,8 @@ def cloud_cache_dir():
     if os.path.exists("Z:\\"):
         os.makedirs(cloud_path, exist_ok=True)
         yield cloud_path
-        # Cleanup
-        if os.path.exists(cloud_path):
-            shutil.rmtree(cloud_path)
+        # Cleanup with retry logic
+        force_cleanup_directory(cloud_path)
     else:
         pytest.skip("Cloud drive Z: not available")
 

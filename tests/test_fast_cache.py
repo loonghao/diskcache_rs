@@ -247,10 +247,14 @@ class TestFastCache:
         print(f"FastCache: {fast_time:.3f}s")
         print(f"Original Cache: {original_time:.3f}s")
 
-        if fast_time < original_time:
-            print(f"FastCache is {original_time / fast_time:.2f}x faster")
+        # Avoid division by zero
+        if fast_time > 0 and original_time > 0:
+            if fast_time < original_time:
+                print(f"FastCache is {original_time / fast_time:.2f}x faster")
+            else:
+                print(f"FastCache is {fast_time / original_time:.2f}x slower")
         else:
-            print(f"FastCache is {fast_time / original_time:.2f}x slower")
+            print("Performance comparison skipped due to very fast execution times")
 
         # FastCache uses a different backend (PickleCache) which may have different
         # performance characteristics. We just ensure both complete successfully.

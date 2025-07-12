@@ -223,7 +223,8 @@ mod storage_backend_tests {
         test_storage_backend(hybrid);
 
         // Test FileStorage
-        let file_storage = FileStorage::new(temp_dir.path().join("file"), true, false, false).unwrap();
+        let file_storage =
+            FileStorage::new(temp_dir.path().join("file"), true, false, false).unwrap();
         test_storage_backend(file_storage);
     }
 }
@@ -248,11 +249,19 @@ mod performance_tests {
         }
         let duration = start.elapsed();
 
-        println!("UltraFast SET: {} ops in {:?} ({:.1} ops/s)", 
-                 iterations, duration, iterations as f64 / duration.as_secs_f64());
+        println!(
+            "UltraFast SET: {} ops in {:?} ({:.1} ops/s)",
+            iterations,
+            duration,
+            iterations as f64 / duration.as_secs_f64()
+        );
 
         // Should be very fast (> 10k ops/s)
         let ops_per_sec = iterations as f64 / duration.as_secs_f64();
-        assert!(ops_per_sec > 10000.0, "UltraFast storage should be > 10k ops/s, got {:.1}", ops_per_sec);
+        assert!(
+            ops_per_sec > 10000.0,
+            "UltraFast storage should be > 10k ops/s, got {:.1}",
+            ops_per_sec
+        );
     }
 }

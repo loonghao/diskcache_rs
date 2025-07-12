@@ -37,6 +37,8 @@ jobs:
           RUST_BACKTRACE: 1
       - name: Run pytest
         run: uv run python -m pytest tests/ -v --tb=short -m "not docker"
+        env:
+          PYTHONUNBUFFERED: 1
       - name: Run basic functionality tests
         run: uv run python -c "import diskcache_rs; print(\"diskcache_rs imported successfully\")"
 

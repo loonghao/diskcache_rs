@@ -236,9 +236,7 @@ class TestPickleCache:
             retrieved = cache.get(key)
             assert retrieved == value
 
-    @pytest.mark.skipif(
-        True, reason="Size limits and eviction testing requires careful setup"
-    )
+    @pytest.mark.slow
     def test_size_limits_and_eviction(self, temp_cache_dir):
         """Test size limits and LRU eviction"""
         # Small cache size for testing
