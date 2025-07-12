@@ -171,7 +171,12 @@ class Cache:
     def __contains__(self, key: str) -> bool:
         """Check if key exists in cache"""
         try:
-            return self._cache.exists(key)
+            # Try exists method first, fallback to checking keys
+            if hasattr(self._cache, 'exists'):
+                return self._cache.exists(key)
+            else:
+                # Fallback: check if key is in keys list
+                return key in self._cache.keys()
         except Exception:
             return False
     
@@ -218,22 +223,7 @@ class Cache:
             return count
         except Exception:
             return 0
-
-    def keys(self) -> List[str]:
-        """Get list of all cache keys"""
-        try:
-            return self._cache.keys()
-        except Exception:
-            return []
-
-    def iterkeys(self) -> Iterator[str]:
-        """Iterate over cache keys (diskcache compatibility)"""
-        return iter(self.keys())
-
-    def exists(self, key: str) -> bool:
-        """Check if key exists in cache (diskcache compatibility)"""
-        return key in self
-
+    
     def pop(self, key: str, default=None, expire_time: bool = False,
             tag: bool = False, retry: bool = False):
         """
