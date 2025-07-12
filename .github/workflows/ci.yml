@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -29,6 +29,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies
         run: uv sync --group test
+      - name: Install build dependencies
+        run: uv pip install maturin
       - name: Build extension
         run: uv run maturin develop
         env:
@@ -36,7 +38,7 @@ jobs:
       - name: Run pytest
         run: uv run python -m pytest tests/ -v --tb=short -m "not docker"
       - name: Run basic functionality tests
-        run: uv run python -c "import diskcache_rs; print('diskcache_rs imported successfully')"
+        run: uv run python -c "import diskcache_rs; print(\"diskcache_rs imported successfully\")"
 
   # Code formatting and linting
   lint:
@@ -47,7 +49,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
