@@ -25,7 +25,7 @@ except ImportError as e:
 
 def benchmark_operation(cache, operation, data, iterations=1000):
     """Benchmark a cache operation."""
-    start_time = time.time()
+    start_time = time.perf_counter()
 
     if operation == "set":
         for i in range(iterations):
@@ -36,7 +36,7 @@ def benchmark_operation(cache, operation, data, iterations=1000):
             cache.set(f"key_{i}", data)
 
         # Now benchmark get operations
-        start_time = time.time()  # Reset timer
+        start_time = time.perf_counter()  # Reset timer
         for i in range(iterations):
             cache.get(f"key_{i}")
     elif operation == "delete":
@@ -45,11 +45,11 @@ def benchmark_operation(cache, operation, data, iterations=1000):
             cache.set(f"key_{i}", data)
 
         # Now benchmark delete operations
-        start_time = time.time()  # Reset timer
+        start_time = time.perf_counter()  # Reset timer
         for i in range(iterations):
             cache.delete(f"key_{i}")
 
-    end_time = time.time()
+    end_time = time.perf_counter()
     total_time = end_time - start_time
     ops_per_second = iterations / total_time if total_time > 0 else 0
 
@@ -153,20 +153,20 @@ def test_serialization_performance():
 
             # Test serialization performance
             iterations = 1000
-            start_time = time.time()
+            start_time = time.perf_counter()
 
             for i in range(iterations):
                 cache.set(f"key_{i}", data)
 
-            set_time = time.time() - start_time
+            set_time = time.perf_counter() - start_time
 
             # Test deserialization performance
-            start_time = time.time()
+            start_time = time.perf_counter()
 
             for i in range(iterations):
                 _ = cache.get(f"key_{i}")
 
-            get_time = time.time() - start_time
+            get_time = time.perf_counter() - start_time
 
             print(f"  Serialize:   {iterations / set_time:8.1f} ops/s")
             print(f"  Deserialize: {iterations / get_time:8.1f} ops/s")

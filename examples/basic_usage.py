@@ -57,19 +57,19 @@ def example_performance():
         cache = Cache(temp_dir)
 
         # Measure write performance
-        start_time = time.time()
+        start_time = time.perf_counter()
         for i in range(1000):
             key = f"perf_key_{i}"
             value = f"performance_value_{i}".encode()
             cache.set(key, value)
-        write_time = time.time() - start_time
+        write_time = time.perf_counter() - start_time
 
         # Measure read performance
-        start_time = time.time()
+        start_time = time.perf_counter()
         for i in range(1000):
             key = f"perf_key_{i}"
             cache.get(key)
-        read_time = time.time() - start_time
+        read_time = time.perf_counter() - start_time
 
         print(
             f"Write 1000 items: {write_time:.3f} seconds ({1000 / write_time:.1f} ops/sec)"

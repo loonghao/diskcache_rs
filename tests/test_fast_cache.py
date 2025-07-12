@@ -227,21 +227,21 @@ class TestFastCache:
         test_data = {"key": "value", "number": 42, "list": list(range(10))}
         num_operations = 100  # Reduced for CI stability
 
-        # Benchmark FastCache
-        start_time = time.time()
+        # Benchmark FastCache (use high precision timer)
+        start_time = time.perf_counter()
         for i in range(num_operations):
             fast_cache.set(f"key_{i}", test_data)
         for i in range(num_operations):
             fast_cache.get(f"key_{i}")
-        fast_time = time.time() - start_time
+        fast_time = time.perf_counter() - start_time
 
-        # Benchmark original Cache
-        start_time = time.time()
+        # Benchmark original Cache (use high precision timer)
+        start_time = time.perf_counter()
         for i in range(num_operations):
             original_cache.set(f"key_{i}", test_data)
         for i in range(num_operations):
             original_cache.get(f"key_{i}")
-        original_time = time.time() - start_time
+        original_time = time.perf_counter() - start_time
 
         print(f"\nPerformance comparison ({num_operations} operations):")
         print(f"FastCache: {fast_time:.3f}s")
@@ -259,8 +259,9 @@ class TestFastCache:
         # FastCache uses a different backend (PickleCache) which may have different
         # performance characteristics. We just ensure both complete successfully.
         # The main value of FastCache is in its additional features (TTL, LRU, etc.)
-        assert fast_time > 0, "FastCache should complete successfully"
-        assert original_time > 0, "Original Cache should complete successfully"
+        # Use >= 0 to handle very fast execution times on Windows
+        assert fast_time >= 0, "FastCache should complete successfully"
+        assert original_time >= 0, "Original Cache should complete successfully"
 
         # Ensure reasonable performance bounds (should complete within 30 seconds)
         assert fast_time < 30.0, "FastCache should complete within reasonable time"
