@@ -3,7 +3,8 @@ High-performance pickle cache with expiration support
 """
 
 import pickle
-from typing import Any, Optional, Dict, List
+from typing import Any, Dict, List, Optional
+
 from ._diskcache_rs import PickleCache as _PickleCache
 
 
@@ -78,11 +79,11 @@ class PickleCache:
             if pickled_data is not None:
                 return pickle.loads(pickled_data)
             return default
-        except Exception as e:
+        except Exception:
             # If unpickling fails, remove the corrupted entry
             try:
                 self._cache.delete_pickle(key)
-            except:
+            except Exception:
                 pass
             return default
 

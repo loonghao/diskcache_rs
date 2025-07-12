@@ -4,8 +4,8 @@ Python-compatible cache interface for diskcache_rs
 
 import os
 import time
-from typing import Any, Optional, Union, List, Dict, Iterator
 from pathlib import Path
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 # Use high-performance Rust pickle implementation when available
 try:

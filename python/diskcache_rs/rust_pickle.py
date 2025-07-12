@@ -8,6 +8,7 @@ from typing import Any
 # Try to import Rust pickle functions
 try:
     from ._diskcache_rs import rust_pickle_dumps, rust_pickle_loads
+
     RUST_PICKLE_AVAILABLE = True
 except ImportError:
     RUST_PICKLE_AVAILABLE = False
@@ -17,11 +18,11 @@ def dumps(obj: Any, protocol: int = pickle.HIGHEST_PROTOCOL) -> bytes:
     """
     Serialize an object using high-performance Rust backend if available,
     otherwise fall back to standard pickle.
-    
+
     Args:
         obj: Object to serialize
         protocol: Pickle protocol version (ignored for Rust implementation)
-        
+
     Returns:
         Serialized bytes
     """
@@ -32,7 +33,7 @@ def dumps(obj: Any, protocol: int = pickle.HIGHEST_PROTOCOL) -> bytes:
         except Exception:
             # Fall back to standard pickle on error
             pass
-    
+
     # Use standard Python pickle
     return pickle.dumps(obj, protocol=protocol)
 
@@ -41,10 +42,10 @@ def loads(data: bytes) -> Any:
     """
     Deserialize an object using high-performance Rust backend if available,
     otherwise fall back to standard pickle.
-    
+
     Args:
         data: Serialized bytes
-        
+
     Returns:
         Deserialized object
     """
@@ -55,7 +56,7 @@ def loads(data: bytes) -> Any:
         except Exception:
             # Fall back to standard pickle on error
             pass
-    
+
     # Use standard Python pickle
     return pickle.loads(data)
 

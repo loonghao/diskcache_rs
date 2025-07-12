@@ -4,8 +4,9 @@ Tests for PickleCache functionality
 
 import tempfile
 import time
+
 import pytest
-from diskcache_rs import PickleCache, cache_object, get_cached_object, clear_cache
+from diskcache_rs import PickleCache, cache_object, clear_cache, get_cached_object
 
 
 class TestPickleCache:

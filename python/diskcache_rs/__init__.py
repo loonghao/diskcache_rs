@@ -8,8 +8,8 @@ but implemented in Rust for better performance and network filesystem support.
 # Always use the Python wrapper for now
 # The Python wrapper will handle importing the Rust implementation
 from .cache import Cache, FanoutCache
-from .pickle_cache import PickleCache, cache_object, get_cached_object, clear_cache
 from .fast_cache import FastCache, FastFanoutCache
+from .pickle_cache import PickleCache, cache_object, clear_cache, get_cached_object
 
 # Import Rust pickle functions
 try:
@@ -20,10 +20,16 @@ except ImportError:
 
 __version__ = "0.1.0"
 __all__ = [
-    "Cache", "FanoutCache",
-    "PickleCache", "cache_object", "get_cached_object", "clear_cache",
-    "FastCache", "FastFanoutCache",
-    "rust_pickle_dumps", "rust_pickle_loads"
+    "Cache",
+    "FanoutCache",
+    "PickleCache",
+    "cache_object",
+    "get_cached_object",
+    "clear_cache",
+    "FastCache",
+    "FastFanoutCache",
+    "rust_pickle_dumps",
+    "rust_pickle_loads",
 ]
 
 # For backward compatibility

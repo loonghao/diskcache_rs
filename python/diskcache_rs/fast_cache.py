@@ -3,17 +3,18 @@ Fast cache implementation using Rust pickle backend
 """
 
 import time
-from typing import Any, Optional, List, Iterator, Dict
+from typing import Any, Dict, Iterator, List, Optional
+
 from .pickle_cache import PickleCache
 
 
 class FastCache:
     """
     High-performance cache using Rust pickle backend.
-    
+
     This is a drop-in replacement for the standard Cache class that uses
     the high-performance Rust pickle implementation for better performance.
-    
+
     Example:
         >>> cache = FastCache("/tmp/cache", max_size=100*1024*1024)
         >>> cache.set("key", {"data": "value"}, expire=3600)
@@ -29,7 +30,7 @@ class FastCache:
     ):
         """
         Initialize the fast cache.
-        
+
         Args:
             directory: Directory to store cache files
             max_size: Maximum cache size in bytes
@@ -46,11 +47,11 @@ class FastCache:
         expire: Optional[float] = None,
         read: bool = False,
         tag: Optional[str] = None,
-        retry: bool = False
+        retry: bool = False,
     ) -> bool:
         """
         Set key to value in cache
-        
+
         Args:
             key: Cache key
             value: Value to store
@@ -58,7 +59,7 @@ class FastCache:
             read: Whether this is a read operation (ignored)
             tag: Tag for the entry (ignored for now)
             retry: Whether to retry on failure (ignored)
-            
+
         Returns:
             True if successful
         """
@@ -105,7 +106,7 @@ class FastCache:
         """
         try:
             value = self._cache.get(key, default)
-            
+
             # Handle additional return values
             if expire_time or tag:
                 result = [value]
@@ -129,10 +130,10 @@ class FastCache:
     def delete(self, key: str) -> bool:
         """
         Delete key from cache
-        
+
         Args:
             key: Cache key to delete
-            
+
         Returns:
             True if key was found and deleted
         """
@@ -202,14 +203,14 @@ class FastCache:
         """Update the expiration time for a key"""
         if not self.exists(key):
             return False
-        
+
         if expire is not None:
             if expire > time.time():
                 ttl_seconds = int(expire - time.time())
             else:
                 ttl_seconds = int(expire)
             return self.expire(key, ttl_seconds)
-        
+
         return True
 
     def pop(self, key: str, default: Any = None) -> Any:
@@ -269,7 +270,7 @@ class FastFanoutCache:
     ):
         """
         Initialize the fast fanout cache.
-        
+
         Args:
             directory: Base directory for cache shards
             shards: Number of cache shards
@@ -279,12 +280,12 @@ class FastFanoutCache:
         """
         self.directory = directory
         self.shards = shards
-        
+
         # Calculate per-shard size limit
         shard_max_size = None
         if max_size is not None:
             shard_max_size = max_size // shards
-        
+
         # Create cache shards
         self._caches = []
         for i in range(shards):
@@ -328,12 +329,12 @@ class FastFanoutCache:
     def stats(self) -> Dict[str, int]:
         """Get combined statistics from all shards"""
         combined_stats = {"entries": 0, "size_bytes": 0}
-        
+
         for cache in self._caches:
             shard_stats = cache.stats()
             combined_stats["entries"] += shard_stats.get("entries", 0)
             combined_stats["size_bytes"] += shard_stats.get("size_bytes", 0)
-        
+
         return combined_stats
 
     # Delegate other methods to appropriate shard
