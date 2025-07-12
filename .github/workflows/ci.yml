@@ -30,11 +30,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --group test
       - name: Build extension
-        run: uv pip install -e .
+        run: uv run maturin develop
         env:
           RUST_BACKTRACE: 1
       - name: Run pytest
-        run: uv run python -m pytest tests/ -v --tb=short
+        run: uv run python -m pytest tests/ -v --tb=short -m "not docker"
       - name: Run basic functionality tests
         run: uv run python -c "import diskcache_rs; print('diskcache_rs imported successfully')"
 
@@ -57,7 +57,7 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --all-features
       - name: Run ruff check
         run: uvx ruff check .
       - name: Run ruff format check

@@ -204,6 +204,20 @@ class Cache:
             return len(self._cache.keys())
         except Exception:
             return 0
+    
+    def clear(self) -> int:
+        """
+        Clear all items from cache
+        
+        Returns:
+            Number of items removed
+        """
+        try:
+            count = len(self)
+            self._cache.clear()
+            return count
+        except Exception:
+            return 0
 
     def keys(self) -> List[str]:
         """Get list of all cache keys"""
@@ -220,20 +234,6 @@ class Cache:
         """Check if key exists in cache (diskcache compatibility)"""
         return key in self
 
-    def clear(self) -> int:
-        """
-        Clear all items from cache
-        
-        Returns:
-            Number of items removed
-        """
-        try:
-            count = len(self)
-            self._cache.clear()
-            return count
-        except Exception:
-            return 0
-    
     def pop(self, key: str, default=None, expire_time: bool = False,
             tag: bool = False, retry: bool = False):
         """
@@ -479,18 +479,7 @@ class FanoutCache:
     def __len__(self) -> int:
         """Get total number of items across all shards"""
         return sum(len(cache) for cache in self._caches)
-
-    def keys(self) -> List[str]:
-        """Get list of all cache keys across all shards"""
-        all_keys = []
-        for cache in self._caches:
-            all_keys.extend(cache.keys())
-        return all_keys
-
-    def iterkeys(self) -> Iterator[str]:
-        """Iterate over cache keys (diskcache compatibility)"""
-        return iter(self.keys())
-
+    
     def clear(self) -> int:
         """Clear all items from all shards"""
         return sum(cache.clear() for cache in self._caches)
