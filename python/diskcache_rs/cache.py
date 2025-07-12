@@ -5,8 +5,8 @@ Python-compatible cache interface for diskcache_rs
 import os
 import pickle
 import time
+from typing import Any, Optional, Union, List, Dict, Iterator
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Union
 
 # We'll import the Rust implementation at runtime to avoid circular imports
 _RustCache = None
@@ -177,12 +177,19 @@ class Cache:
 
     def __contains__(self, key: str) -> bool:
         """Check if key exists in cache"""
-        return self.exists(key)
+        try:
+            return self._cache.exists(key)
+        except Exception:
+            return False
     
     def __getitem__(self, key: str) -> Any:
         """Get item using [] syntax"""
         result = self.get(key)
-        if result is None and key not in self:
+        try:
+            exists = self._cache.exists(key)
+        except Exception:
+            exists = False
+        if result is None and not exists:
             raise KeyError(key)
         return result
     

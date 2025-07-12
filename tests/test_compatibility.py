@@ -199,7 +199,7 @@ class TestCompatibility:
 
         # Exists check (use __contains__ for compatibility)
         assert nonexistent_key not in rs_cache
-        assert not dc_cache.exists(nonexistent_key)
+        assert nonexistent_key not in dc_cache
 
         # Delete nonexistent key
         rs_delete = rs_cache.delete(nonexistent_key)
@@ -281,7 +281,7 @@ class TestCompatibility:
             assert rs_result == dc_result == test_value
 
             # Exists check (use __contains__ for compatibility)
-            assert (key in rs_cache) == dc_cache.exists(key) is True
+            assert (key in rs_cache) == (key in dc_cache) is True
 
         # Close caches to release file handles
         rs_cache.close()

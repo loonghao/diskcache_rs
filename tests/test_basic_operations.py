@@ -3,7 +3,6 @@ Basic functionality tests for diskcache_rs
 """
 
 
-
 class TestBasicOperations:
     """Test basic cache operations"""
 
