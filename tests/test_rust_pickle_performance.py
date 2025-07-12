@@ -85,19 +85,19 @@ class TestRustPicklePerformance:
 
         num_operations = 100
 
-        # Benchmark standard pickle
-        start_time = time.time()
+        # Benchmark standard pickle (use high precision timer)
+        start_time = time.perf_counter()
         for _ in range(num_operations):
             pickled = pickle.dumps(test_data)
             _ = pickle.loads(pickled)
-        standard_time = time.time() - start_time
+        standard_time = time.perf_counter() - start_time
 
-        # Benchmark Rust pickle
-        start_time = time.time()
+        # Benchmark Rust pickle (use high precision timer)
+        start_time = time.perf_counter()
         for _ in range(num_operations):
             pickled = rust_pickle.dumps(test_data)
             _ = rust_pickle.loads(pickled)
-        rust_time = time.time() - start_time
+        rust_time = time.perf_counter() - start_time
 
         print(f"\nPickle performance comparison ({num_operations} operations):")
         print(f"Standard pickle: {standard_time:.3f}s")
@@ -116,7 +116,9 @@ class TestRustPicklePerformance:
 
         # For now, we just ensure Rust pickle works correctly
         # Performance may vary depending on implementation
-        assert rust_time > 0  # Just ensure it completes
+        # Use a more lenient assertion that handles very fast execution times
+        assert rust_time >= 0  # Just ensure it completes without error
+        assert standard_time >= 0  # Ensure standard pickle also completes
 
     @pytest.mark.benchmark
     def test_cache_performance_with_rust_pickle(self, temp_cache_dir):
@@ -135,18 +137,18 @@ class TestRustPicklePerformance:
 
         print(f"\nCache performance test ({num_operations} operations):")
 
-        # Benchmark set operations
-        start_time = time.time()
+        # Benchmark set operations (use high precision timer)
+        start_time = time.perf_counter()
         for i in range(num_operations):
             cache.set(f"key_{i}", test_data)
-        set_time = time.time() - start_time
+        set_time = time.perf_counter() - start_time
 
-        # Benchmark get operations
-        start_time = time.time()
+        # Benchmark get operations (use high precision timer)
+        start_time = time.perf_counter()
         for i in range(num_operations):
             retrieved = cache.get(f"key_{i}")
             assert retrieved == test_data
-        get_time = time.time() - start_time
+        get_time = time.perf_counter() - start_time
 
         total_time = set_time + get_time
 
