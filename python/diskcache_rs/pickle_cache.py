@@ -10,13 +10,13 @@ from ._diskcache_rs import PickleCache as _PickleCache
 class PickleCache:
     """
     High-performance disk cache for pickled Python objects with expiration support.
-    
+
     This cache uses Rust for high-performance operations and supports:
     - Automatic expiration of cached items
     - LRU eviction when size limits are reached
     - Efficient pickle serialization/deserialization
     - Thread-safe operations
-    
+
     Example:
         >>> cache = PickleCache("/tmp/pickle_cache", max_size=100*1024*1024)  # 100MB limit
         >>> cache.set("key", {"data": "value"}, ttl_seconds=3600)  # Expire in 1 hour
@@ -32,7 +32,7 @@ class PickleCache:
     ):
         """
         Initialize the pickle cache.
-        
+
         Args:
             directory: Directory to store cache files
             max_size: Maximum cache size in bytes (None for unlimited)
@@ -43,12 +43,12 @@ class PickleCache:
     def set(self, key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
         """
         Store a Python object in the cache.
-        
+
         Args:
             key: Cache key
             value: Python object to cache (must be picklable)
             ttl_seconds: Time to live in seconds (overrides default TTL)
-        
+
         Raises:
             PickleError: If the object cannot be pickled
             IOError: If there's an error writing to disk
@@ -62,14 +62,14 @@ class PickleCache:
     def get(self, key: str, default: Any = None) -> Any:
         """
         Retrieve a Python object from the cache.
-        
+
         Args:
             key: Cache key
             default: Default value to return if key is not found or expired
-            
+
         Returns:
             The cached object or default value
-            
+
         Raises:
             PickleError: If the cached data cannot be unpickled
         """
@@ -89,10 +89,10 @@ class PickleCache:
     def delete(self, key: str) -> bool:
         """
         Delete an entry from the cache.
-        
+
         Args:
             key: Cache key to delete
-            
+
         Returns:
             True if the key was found and deleted, False otherwise
         """
@@ -101,10 +101,10 @@ class PickleCache:
     def exists(self, key: str) -> bool:
         """
         Check if a key exists in the cache and is not expired.
-        
+
         Args:
             key: Cache key to check
-            
+
         Returns:
             True if the key exists and is not expired, False otherwise
         """
@@ -113,7 +113,7 @@ class PickleCache:
     def keys(self) -> List[str]:
         """
         Get all non-expired keys in the cache.
-        
+
         Returns:
             List of cache keys
         """
@@ -128,7 +128,7 @@ class PickleCache:
     def stats(self) -> Dict[str, int]:
         """
         Get cache statistics.
-        
+
         Returns:
             Dictionary with cache statistics:
             - entries: Number of entries in cache
@@ -141,11 +141,11 @@ class PickleCache:
     def expire(self, key: str, ttl_seconds: int) -> bool:
         """
         Set or update the TTL for an existing key.
-        
+
         Args:
             key: Cache key
             ttl_seconds: New TTL in seconds
-            
+
         Returns:
             True if the key was found and TTL was set, False otherwise
         """
@@ -154,10 +154,10 @@ class PickleCache:
     def ttl(self, key: str) -> Optional[int]:
         """
         Get the remaining TTL for a key.
-        
+
         Args:
             key: Cache key
-            
+
         Returns:
             Remaining TTL in seconds, None if key doesn't exist or has no expiration,
             0 if the key is expired
@@ -213,7 +213,7 @@ def cache_object(
 ) -> None:
     """
     Convenience function to cache a single object.
-    
+
     Args:
         directory: Cache directory
         key: Cache key
@@ -232,12 +232,12 @@ def get_cached_object(
 ) -> Any:
     """
     Convenience function to retrieve a cached object.
-    
+
     Args:
         directory: Cache directory
         key: Cache key
         default: Default value if not found
-        
+
     Returns:
         Cached object or default value
     """
@@ -248,7 +248,7 @@ def get_cached_object(
 def clear_cache(directory: str) -> None:
     """
     Convenience function to clear a cache directory.
-    
+
     Args:
         directory: Cache directory to clear
     """

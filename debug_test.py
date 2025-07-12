@@ -3,6 +3,7 @@
 import tempfile
 import os
 
+
 def test_cache():
     # Test with the exact same import order as the failing test
     import diskcache
@@ -36,6 +37,7 @@ def test_cache():
         except Exception as e:
             print(f"Error in rs_cache 'not in': {e}")
             import traceback
+
             traceback.print_exc()
 
         try:
@@ -44,7 +46,9 @@ def test_cache():
         except Exception as e:
             print(f"Error in dc_cache exists: {e}")
             import traceback
+
             traceback.print_exc()
+
 
 if __name__ == "__main__":
     test_cache()
