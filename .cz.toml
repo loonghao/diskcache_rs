@@ -1,12 +1,11 @@
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.1.0"
+version = "0.2.0"
 tag_format = "v$version"
 update_changelog_on_bump = true
 major_version_zero = true
 
 # Files to update with new version
 version_files = [
-    "Cargo.toml:version",
-    "pyproject.toml:version"
+    "Cargo.toml:version"
 ]

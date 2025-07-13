@@ -89,13 +89,13 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.mypy]
-python_version = "0.1.0"
+python_version = "3.8"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
-minversion = "0.1.0"
+minversion = "6.0"
 addopts = "-ra -q --strict-markers --strict-config"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
