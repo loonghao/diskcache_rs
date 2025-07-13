@@ -46,6 +46,7 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "pyo3-stubgen>=0.3.0",
+    "commitizen>=3.0.0",
 ]
 
 [project.urls]
@@ -126,4 +127,10 @@ filterwarnings = [
     "ignore::DeprecationWarning",
 ]
 
-
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_scheme = "semver"
+version_provider = "pep621"
+update_changelog_on_bump = true
+major_version_zero = false
