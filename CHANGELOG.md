@@ -1,3 +1,10 @@
+## v0.2.1 (2025-07-13)
+
+### Fix
+
+- resolve merge conflicts and correct version field configurations
+- correct ruff target-version configuration
+
 ## v0.2.0 (2025-07-13)
 
 ### Feat
