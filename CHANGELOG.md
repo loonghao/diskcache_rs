@@ -1,3 +1,10 @@
+## v0.2.2 (2025-07-13)
+
+### Fix
+
+- add comprehensive GitHub Actions permissions for version management
+- improve commitizen workflow with debug and proper permissions
+
 ## v0.2.1 (2025-07-13)
 
 ### Fix
