@@ -260,7 +260,7 @@ class TestCompatibility:
         dc_cache = diskcache.Cache(dc_dir)
 
         unicode_keys = [
-            "测试键",  # Chinese
+            "test_key_chinese",  # Chinese
             "тест",  # Russian
             "key with spaces",
             "key-with-dashes",

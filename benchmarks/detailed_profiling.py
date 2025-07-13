@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-详细的性能分析 - 找出小数据 SET 操作的具体瓶颈
+Detailed performance analysis - identify specific bottlenecks in small data SET operations
 """
 
 import cProfile
@@ -26,7 +26,7 @@ except ImportError as e:
 
 
 def profile_single_operation():
-    """分析单个 SET 操作的详细耗时"""
+    """Analyze detailed timing of a single SET operation"""
     print("🔬 Single Operation Detailed Profiling")
     print("=" * 60)
 

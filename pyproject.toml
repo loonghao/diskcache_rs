@@ -45,6 +45,7 @@ dev = [
     { include-group = "benchmark" },
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+    "pyo3-stubgen>=0.3.0",
 ]
 
 [project.urls]
@@ -54,7 +55,7 @@ Documentation = "https://github.com/loonghao/diskcache_rs"
 "Bug Tracker" = "https://github.com/loonghao/diskcache_rs/issues"
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
+features = ["pyo3/extension-module", "pyo3/abi3-py38"]
 python-source = "python"
 module-name = "diskcache_rs._diskcache_rs"
 bindings = "pyo3"

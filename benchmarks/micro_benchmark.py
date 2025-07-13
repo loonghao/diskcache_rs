@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-微基准测试 - 分析每个操作的具体耗时
+Micro-benchmark - analyze specific timing of each operation
 """
 
 import cProfile
