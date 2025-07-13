@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
           architecture: x64
       - name: Build ABI3 wheels
         uses: PyO3/maturin-action@v1
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
           architecture: ${{ matrix.target }}
       - name: Build ABI3 wheels
         uses: PyO3/maturin-action@v1
@@ -80,7 +80,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
           architecture: x64
       - name: Build ABI3 wheels
         uses: PyO3/maturin-action@v1
