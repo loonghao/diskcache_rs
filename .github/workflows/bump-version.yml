@@ -1,109 +1,25 @@
-name: Bump Version and Release
+name: Bump version
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
-
 permissions:
   contents: write
   pull-requests: write
-
 jobs:
   bump-version:
-    # Skip if commit message starts with 'bump:'
-    if: "!startsWith(github.event.head_commit.message, 'bump:') && github.repository_owner == 'loonghao'"
+    if: "!startsWith(github.event.head_commit.message, 'bump:')"
     runs-on: ubuntu-latest
     name: "Bump version and create changelog with commitizen"
-    outputs:
-      version: ${{ steps.cz.outputs.version }}
-      version_created: ${{ steps.cz.outputs.version != '' }}
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+          token: '${{ secrets.GITHUB_TOKEN }}'
+      - name: Create bump and changelog
+        uses: commitizen-tools/commitizen-action@master
         with:
-          python-version: "3.11"
-      
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-      
-      - name: Install dependencies
-        run: uv sync --group dev
-
-      - name: Configure git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      - id: cz
-        name: Create bump and changelog
-        run: |
-          # Check if there are commits to bump
-          if uvx cz bump --dry-run --yes; then
-            echo "Changes detected, bumping version..."
-            uvx cz bump --yes --changelog --changelog-to-stdout > body.md
-            echo "version=$(uvx cz version)" >> $GITHUB_OUTPUT
-            echo "version_created=true" >> $GITHUB_OUTPUT
-          else
-            echo "No changes to bump"
-            echo "version_created=false" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Print Version
-        if: steps.cz.outputs.version_created == 'true'
-        run: echo "Bumped to version ${{ steps.cz.outputs.version }}"
-
-  # Build and publish when version is bumped
-  build-and-publish:
-    needs: bump-version
-    if: needs.bump-version.outputs.version_created == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: main  # Get the latest commit with version bump
-          fetch-depth: 0
-      
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.11"
-      
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-      
-      - name: Install dependencies
-        run: uv sync --group dev
-      
-      - name: Run tests
-        run: |
-          echo "🧪 Running tests before release..."
-          just test
-      
-      - name: Build wheels
-        run: |
-          echo "🚀 Building wheels for version ${{ needs.bump-version.outputs.version }}"
-          # Trigger build workflows
-          gh workflow run build.yml --ref v${{ needs.bump-version.outputs.version }}
-          gh workflow run build-abi3.yml --ref v${{ needs.bump-version.outputs.version }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          body_path: "body.md"
-          tag_name: v${{ needs.bump-version.outputs.version }}
-          name: "Release v${{ needs.bump-version.outputs.version }}"
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
