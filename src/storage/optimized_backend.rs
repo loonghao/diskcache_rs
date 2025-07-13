@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::mpsc;
+use std::sync::mpsc;
 
 /// High-performance optimized storage backend with multiple performance enhancements:
 /// - Memory-mapped files for large data
@@ -138,7 +138,7 @@ impl BufferPool {
 
 /// Batched write operations for better I/O performance
 struct WriteBatcher {
-    sender: mpsc::UnboundedSender<WriteOp>,
+    sender: mpsc::Sender<WriteOp>,
 }
 
 #[derive(Debug)]
@@ -150,26 +150,26 @@ enum WriteOp {
 
 impl WriteBatcher {
     fn new(_directory: PathBuf, batch_size: usize) -> Self {
-        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let (sender, receiver) = mpsc::channel();
 
-        tokio::spawn(async move {
+        std::thread::spawn(move || {
             let mut batch = Vec::with_capacity(batch_size);
             let mut writer_map: std::collections::HashMap<PathBuf, BufWriter<File>> =
                 std::collections::HashMap::new();
 
-            while let Some(op) = receiver.recv().await {
+            while let Ok(op) = receiver.recv() {
                 match op {
                     WriteOp::Write { path, data } => {
                         batch.push((path, data));
                         if batch.len() >= batch_size {
-                            Self::flush_batch(&mut batch, &mut writer_map).await;
+                            Self::flush_batch(&mut batch, &mut writer_map);
                         }
                     }
                     WriteOp::Delete { path } => {
                         let _ = std::fs::remove_file(&path);
                     }
                     WriteOp::Sync => {
-                        Self::flush_batch(&mut batch, &mut writer_map).await;
+                        Self::flush_batch(&mut batch, &mut writer_map);
                         for writer in writer_map.values_mut() {
                             let _ = writer.flush();
                         }
@@ -178,13 +178,13 @@ impl WriteBatcher {
             }
 
             // Final flush
-            Self::flush_batch(&mut batch, &mut writer_map).await;
+            Self::flush_batch(&mut batch, &mut writer_map);
         });
 
         Self { sender }
     }
 
-    async fn flush_batch(
+    fn flush_batch(
         batch: &mut Vec<(PathBuf, Bytes)>,
         _writer_map: &mut std::collections::HashMap<PathBuf, BufWriter<File>>,
     ) {
