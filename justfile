@@ -80,7 +80,7 @@ dev: install build stubs
 # Build release wheels for all platforms
 release:
     @echo "📦 Building release wheels..."
-    uvx maturin build --release --compatibility abi3
+    uvx maturin build --release
 
 # Build and publish to PyPI (requires authentication)
 publish: release
