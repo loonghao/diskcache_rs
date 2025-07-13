@@ -6,8 +6,9 @@ on:
       - main
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write        # Required for: modify files, create tags, create releases
+  pull-requests: write   # Optional: for automated PR operations
+  actions: write         # Optional: for triggering other workflows
 
 jobs:
   bump-version:
