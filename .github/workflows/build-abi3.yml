@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: write  # Required for uploading artifacts
 
 jobs:
   # Linux ABI3 builds

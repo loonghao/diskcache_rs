@@ -9,7 +9,9 @@ on:
   workflow_call:
 
 permissions:
-  contents: read
+  contents: write  # Required for creating releases and uploading artifacts
+  id-token: write  # Required for PyPI trusted publishing
+  attestations: write  # Required for artifact attestation
 
 jobs:
   # Call the build workflow to build standard wheels
@@ -17,12 +19,14 @@ jobs:
     uses: ./.github/workflows/build.yml
     permissions:
       contents: read
+      actions: write  # Required for uploading artifacts
 
   # Call the ABI3 build workflow to build universal wheels
   build-abi3:
     uses: ./.github/workflows/build-abi3.yml
     permissions:
       contents: read
+      actions: write  # Required for uploading artifacts
 
   # Call the CI workflow to run tests
   test:
@@ -73,7 +77,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [release]
     permissions:
-      contents: write
+      contents: write  # Required for creating releases
+      actions: read    # Required for downloading artifacts
+      attestations: write  # Required for artifact attestation
     steps:
       - uses: actions/checkout@v4
         with:
