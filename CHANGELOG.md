@@ -1,3 +1,10 @@
+## v0.2.3 (2025-07-13)
+
+### Fix
+
+- configure proper permissions for release workflows
+- resolve release changelog generation issues
+
 ## v0.2.2 (2025-07-13)
 
 ### Fix
