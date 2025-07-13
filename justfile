@@ -143,12 +143,6 @@ check-version:
     @echo "🔍 Checking version consistency..."
     uvx --from commitizen cz check --rev-range HEAD~1..HEAD
 
-# Generate Python stub files (.pyi)
-generate-stubs:
-    @echo "📝 Generating Python stub files..."
-    cargo run --bin stub_gen
-    @echo "✅ Stub files generated successfully"
-
 # Verify stub files are included in wheel
 verify-stubs:
     @echo "🔍 Verifying stub files in wheel..."

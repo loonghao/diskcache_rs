@@ -1,6 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
 use pyo3::prelude::*;
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pyfunction, gen_stub_pymethods};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -50,7 +49,6 @@ impl PickleCacheEntry {
 }
 
 /// High-performance pickle cache with expiration support
-#[gen_stub_pyclass]
 #[pyclass]
 pub struct PickleCache {
     /// Cache directory
@@ -65,7 +63,6 @@ pub struct PickleCache {
     default_ttl: Option<Duration>,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PickleCache {
     #[new]
@@ -362,7 +359,6 @@ impl PickleCache {
 }
 
 /// High-performance pickle serialization using Rust
-#[gen_stub_pyfunction]
 #[pyfunction]
 pub fn rust_pickle_dumps(py: Python, obj: PyObject) -> PyResult<PyObject> {
     // Use Python's pickle module for now, but through Rust
@@ -374,7 +370,6 @@ pub fn rust_pickle_dumps(py: Python, obj: PyObject) -> PyResult<PyObject> {
 }
 
 /// High-performance pickle deserialization using Rust
-#[gen_stub_pyfunction]
 #[pyfunction]
 pub fn rust_pickle_loads(py: Python, data: PyObject) -> PyResult<PyObject> {
     // Use Python's pickle module for now, but through Rust

@@ -7,7 +7,6 @@ use crate::storage::{FileStorage, HybridStorage, StorageBackend, UltraFastStorag
 use crate::utils::{current_timestamp, validate_cache_config, validate_key, CacheStats};
 use parking_lot::RwLock;
 use pyo3::prelude::*;
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
@@ -457,13 +456,11 @@ impl DiskCache {
 }
 
 /// Python wrapper for the Cache
-#[gen_stub_pyclass]
 #[pyclass]
 pub struct PyCache {
     cache: DiskCache,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyCache {
     #[new]
@@ -563,13 +560,11 @@ impl PyCache {
 }
 
 /// Drop-in replacement for diskcache.Cache
-#[gen_stub_pyclass]
 #[pyclass(name = "Cache")]
 pub struct RustCache {
     cache: DiskCache,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl RustCache {
     #[new]
@@ -680,14 +675,12 @@ impl RustCache {
 }
 
 /// Drop-in replacement for diskcache.FanoutCache
-#[gen_stub_pyclass]
 #[pyclass(name = "FanoutCache")]
 pub struct RustFanoutCache {
     caches: Vec<RustCache>,
     shards: usize,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl RustFanoutCache {
     #[new]
