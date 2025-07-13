@@ -4,7 +4,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.87+-orange.svg)](https://www.rust-lang.org)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
 
-[中文文档](README_zh.md) | English
+English Documentation
 
 A **blazingly fast** disk cache implementation in Rust with Python bindings, designed to be compatible with [python-diskcache](https://github.com/grantjenks/python-diskcache) while providing **superior performance** and **bulletproof network filesystem support**.
 

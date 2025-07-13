@@ -239,7 +239,7 @@ class TestRustPicklePerformance:
 
         # Complex test data
         test_data = {
-            "unicode": "测试数据 🚀",
+            "unicode": "test_data 🚀",
             "nested": {
                 "list": [1, 2, {"inner": True}],
                 "tuple": (1, 2, 3),

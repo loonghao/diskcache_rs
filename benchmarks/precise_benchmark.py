@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-精确的基准测试 - 使用与 diskcache 完全相同的测试方法
+Precise benchmark - using exactly the same testing methods as diskcache
 """
 
 import os

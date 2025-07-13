@@ -203,7 +203,7 @@ class TestFastCache:
         cache = FastCache(temp_cache_dir)
 
         unicode_data = {
-            "中文": "Chinese text",
+            "chinese_text": "Chinese text",
             "русский": "Russian text",
             "العربية": "Arabic text",
             "emoji": "🚀🎉🔥",

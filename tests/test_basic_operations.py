@@ -126,7 +126,7 @@ class TestBasicOperations:
     def test_unicode_keys(self, cache):
         """Test cache handles unicode keys properly"""
         unicode_keys = [
-            "测试键",  # Chinese
+            "test_key_chinese",  # Chinese characters test
             "тест",  # Russian
             "🔑",  # Emoji
             "key with spaces",

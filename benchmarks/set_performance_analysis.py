@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-详细分析 SET 操作的性能瓶颈
+Detailed analysis of SET operation performance bottlenecks
 """
 
 import os
