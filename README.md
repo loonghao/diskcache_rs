@@ -143,6 +143,44 @@ just release-abi3
 just --list
 ```
 
+### Release Process
+
+This project uses [Commitizen](https://commitizen-tools.github.io/commitizen/) for automated version management and releases.
+
+#### Making Changes
+
+1. **Use Conventional Commits**: All commits should follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+   ```bash
+   # Use commitizen for guided commit creation
+   just commit
+
+   # Or manually follow the format:
+   # feat: add new feature
+   # fix: resolve bug
+   # docs: update documentation
+   # chore: maintenance tasks
+   ```
+
+2. **Automatic Releases**: When you push to `main`, the CI will:
+   - Analyze commit messages since the last release
+   - Automatically bump version in both `Cargo.toml` and `pyproject.toml`
+   - Generate changelog
+   - Create GitHub release
+   - Build and publish wheels to PyPI
+
+#### Manual Release Commands
+
+```bash
+# Check what version would be bumped (dry run)
+just bump --dry-run
+
+# Manually bump version and create changelog
+just bump
+
+# Generate changelog only
+just changelog
+```
+
 ## 🔧 Usage Examples
 
 ### Basic Cache Operations
