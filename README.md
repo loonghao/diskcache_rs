@@ -1,8 +1,13 @@
 # DiskCache RS
 
+[![PyPI version](https://img.shields.io/pypi/v/diskcache-rs.svg)](https://pypi.org/project/diskcache-rs/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/diskcache-rs.svg)](https://pypi.org/project/diskcache-rs/)
+[![Python versions](https://img.shields.io/pypi/pyversions/diskcache-rs.svg)](https://pypi.org/project/diskcache-rs/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.87+-orange.svg)](https://www.rust-lang.org)
-[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
+[![CI](https://github.com/loonghao/diskcache_rs/workflows/CI/badge.svg)](https://github.com/loonghao/diskcache_rs/actions)
+[![codecov](https://codecov.io/gh/loonghao/diskcache_rs/branch/main/graph/badge.svg)](https://codecov.io/gh/loonghao/diskcache_rs)
+[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://github.com/loonghao/diskcache_rs#readme)
 
 English Documentation
 
@@ -46,9 +51,60 @@ A **blazingly fast** disk cache implementation in Rust with Python bindings, des
 
 The original python-diskcache can suffer from SQLite corruption on network file systems, as documented in [issue #345](https://github.com/grantjenks/python-diskcache/issues/345). This implementation uses a file-based storage engine specifically designed for network filesystems, avoiding the "database disk image is malformed" errors.
 
+## 🚀 Quick Start
+
+```bash
+pip install diskcache-rs
+```
+
+```python
+from diskcache_rs import Cache
+
+# Create a cache
+cache = Cache('/tmp/mycache')
+
+# Basic operations
+cache['key'] = 'value'
+print(cache['key'])  # 'value'
+
+# Check if key exists
+if 'key' in cache:
+    print("Key exists!")
+
+# Get with default
+value = cache.get('missing_key', 'default')
+
+# Delete
+del cache['key']
+```
+
 ## 📦 Installation
 
-### Prerequisites
+### From PyPI (Recommended)
+
+```bash
+# Standard installation (Python version-specific wheels)
+pip install diskcache-rs
+
+# ABI3 installation (compatible with Python 3.8+)
+pip install diskcache-rs --prefer-binary --extra-index-url https://pypi.org/simple/
+```
+
+### Wheel Types
+
+**diskcache_rs** provides two types of wheels:
+
+1. **Standard Wheels** (default)
+   - Optimized for specific Python versions (3.8, 3.9, 3.10, 3.11, 3.12, 3.13)
+   - Smaller download size
+   - Maximum performance for your Python version
+
+2. **ABI3 Wheels** (universal)
+   - Single wheel compatible with Python 3.8+
+   - Larger download size but works across Python versions
+   - Ideal for deployment scenarios with multiple Python versions
+
+### Prerequisites (Building from Source)
 
 - Rust 1.87+ (for building from source)
 - Python 3.8+
@@ -64,37 +120,181 @@ cd diskcache_rs
 # Install dependencies
 uv add diskcache  # Optional: for comparison testing
 
-# Build and install
+# Standard build (Python version-specific)
 uvx maturin develop
+
+# ABI3 build (compatible with Python 3.8+)
+uvx maturin develop --features abi3
 ```
 
-## 🔧 Usage
+### Development Commands
 
-### Basic Usage
+```bash
+# Setup development environment
+just dev
+
+# Build standard wheels
+just release
+
+# Build ABI3 wheels
+just release-abi3
+
+# Available commands
+just --list
+```
+
+## 🔧 Usage Examples
+
+### Basic Cache Operations
 
 ```python
-import diskcache_rs
+from diskcache_rs import Cache
 
-# Create a cache
-cache = diskcache_rs.PyCache("/path/to/cache", max_size=1024*1024*1024, max_entries=100000)
+# Create a cache with size limits
+cache = Cache('/tmp/mycache', size_limit=1e9)  # 1GB limit
 
-# Set and get values
-cache.set("key", b"value")
-result = cache.get("key")  # Returns b"value"
+# Dictionary-like interface
+cache['key'] = 'value'
+print(cache['key'])  # 'value'
 
-# Check existence
-if cache.exists("key"):
-    print("Key exists!")
+# Method interface
+cache.set('number', 42)
+cache.set('data', {'nested': 'dict'})
 
-# Delete
-cache.delete("key")
+# Get with default values
+value = cache.get('missing', 'default_value')
 
-# Get statistics
-stats = cache.stats()
-print(f"Hits: {stats['hits']}, Misses: {stats['misses']}")
+# Check membership
+if 'key' in cache:
+    print("Found key!")
 
-# Clear all entries
+# Iterate over keys
+for key in cache:
+    print(f"{key}: {cache[key]}")
+
+# Delete items
+del cache['key']
+cache.pop('number', None)  # Safe deletion
+
+# Clear everything
 cache.clear()
+```
+
+### Advanced Features
+
+```python
+from diskcache_rs import Cache, FanoutCache
+
+# FanoutCache for better concurrent performance
+cache = FanoutCache('/tmp/fanout', shards=8, size_limit=1e9)
+
+# Set with expiration (TTL)
+cache.set('temp_key', 'temp_value', expire=3600)  # 1 hour
+
+# Touch to update access time
+cache.touch('temp_key')
+
+# Atomic operations
+with cache.transact():
+    cache['key1'] = 'value1'
+    cache['key2'] = 'value2'
+    # Both operations succeed or fail together
+
+# Statistics and monitoring
+stats = cache.stats()
+print(f"Hits: {stats.hits}, Misses: {stats.misses}")
+print(f"Size: {cache.volume()} bytes")
+
+# Eviction and cleanup
+cache.cull()  # Manual eviction
+cache.expire()  # Remove expired items
+```
+
+### High-Performance Scenarios
+
+```python
+from diskcache_rs import FastCache
+
+# Ultra-fast memory-only cache
+fast_cache = FastCache(max_size=1000)
+
+# Batch operations for maximum throughput
+items = [(f'key_{i}', f'value_{i}') for i in range(1000)]
+for key, value in items:
+    fast_cache[key] = value
+
+# Efficient bulk retrieval
+keys = [f'key_{i}' for i in range(100)]
+values = [fast_cache.get(key) for key in keys]
+```
+
+### Network Filesystem Support
+
+```python
+from diskcache_rs import Cache
+
+# Works reliably on network drives
+network_cache = Cache('//server/share/cache')
+
+# Atomic writes prevent corruption
+network_cache['important_data'] = large_dataset
+
+# Built-in retry logic for network issues
+try:
+    value = network_cache['important_data']
+except Exception as e:
+    print(f"Network error handled: {e}")
+```
+
+### Django Integration
+
+```python
+# settings.py
+CACHES = {
+    'default': {
+        'BACKEND': 'diskcache_rs.DjangoCache',
+        'LOCATION': '/tmp/django_cache',
+        'OPTIONS': {
+            'size_limit': 1e9,  # 1GB
+            'cull_limit': 0.1,  # Remove 10% when full
+        }
+    }
+}
+
+# In your views
+from django.core.cache import cache
+
+cache.set('user_data', user_profile, timeout=3600)
+user_data = cache.get('user_data')
+```
+
+### Performance Comparison
+
+```python
+import time
+import diskcache
+from diskcache_rs import Cache
+
+# Setup
+data = b'x' * 1024  # 1KB test data
+
+# Original diskcache
+dc_cache = diskcache.Cache('/tmp/diskcache_test')
+start = time.perf_counter()
+for i in range(1000):
+    dc_cache.set(f'key_{i}', data)
+dc_time = time.perf_counter() - start
+
+# diskcache_rs
+rs_cache = Cache('/tmp/diskcache_rs_test')
+start = time.perf_counter()
+for i in range(1000):
+    rs_cache[f'key_{i}'] = data
+rs_time = time.perf_counter() - start
+
+print(f"diskcache: {dc_time:.3f}s ({1000/dc_time:.0f} ops/sec)")
+print(f"diskcache_rs: {rs_time:.3f}s ({1000/rs_time:.0f} ops/sec)")
+print(f"Speedup: {dc_time/rs_time:.1f}x faster")
 ```
 
 ### Python-Compatible API
@@ -150,6 +350,27 @@ cache.set("important_data", b"critical_value")
 3. **File Locking**: Optional file locking for coordination
 4. **Retry Logic**: Handles temporary network failures
 5. **Corruption Detection**: Validates data integrity
+
+## 📋 Feature Comparison
+
+| Feature | diskcache_rs | python-diskcache | Notes |
+|---------|-------------|------------------|-------|
+| **Performance** | 1.2x - 18x faster | Baseline | Rust implementation advantage |
+| **Network FS** | ✅ Optimized | ⚠️ May corrupt | File-based vs SQLite |
+| **Thread Safety** | ✅ Yes | ✅ Yes | Both support concurrent access |
+| **Process Safety** | ✅ Yes | ✅ Yes | Multi-process coordination |
+| **API Compatibility** | ✅ Drop-in | ✅ Native | Same interface |
+| **Memory Usage** | 🔥 Lower | Baseline | Rust memory efficiency |
+| **Startup Time** | 🚀 18x faster | Baseline | Minimal initialization |
+| **Compression** | ✅ LZ4 | ✅ Multiple | Built-in compression |
+| **Eviction Policies** | ✅ LRU/LFU/TTL | ✅ LRU/LFU/TTL | Same strategies |
+| **Serialization** | ✅ Multiple | ✅ Pickle | JSON, Bincode, Pickle |
+| **Type Hints** | ✅ Full | ✅ Partial | Complete .pyi files |
+| **Cross Platform** | ✅ Yes | ✅ Yes | Windows, macOS, Linux |
+| **ABI3 Support** | ✅ Optional | ❌ No | Single wheel for Python 3.8+ |
+| **Wheel Types** | 🎯 Standard + ABI3 | Standard only | Flexible deployment options |
+| **Dependencies** | 🔥 Minimal | More | Fewer runtime dependencies |
+| **Installation** | 📦 pip install | 📦 pip install | Both available on PyPI |
 
 ## 📊 Performance
 
@@ -222,6 +443,59 @@ let config = CacheConfig {
 let cache = Cache::new(config)?;
 ```
 
+## 📚 API Reference
+
+### Cache Class
+
+The main cache interface, compatible with python-diskcache:
+
+```python
+from diskcache_rs import Cache
+
+cache = Cache(directory, size_limit=None, cull_limit=0.1)
+```
+
+**Methods:**
+- `cache[key] = value` - Set a value
+- `value = cache[key]` - Get a value (raises KeyError if missing)
+- `value = cache.get(key, default=None)` - Get with default
+- `cache.set(key, value, expire=None, tag=None)` - Set with options
+- `del cache[key]` - Delete a key
+- `key in cache` - Check membership
+- `len(cache)` - Number of items
+- `cache.clear()` - Remove all items
+- `cache.stats()` - Get statistics
+- `cache.volume()` - Get total size in bytes
+
+### FanoutCache Class
+
+Sharded cache for better concurrent performance:
+
+```python
+from diskcache_rs import FanoutCache
+
+cache = FanoutCache(directory, shards=8, size_limit=None)
+```
+
+Same API as Cache, but with better concurrent performance.
+
+### FastCache Class
+
+Memory-only cache for maximum speed:
+
+```python
+from diskcache_rs import FastCache
+
+cache = FastCache(max_size=1000)
+```
+
+**Methods:**
+- `cache[key] = value` - Set a value
+- `value = cache[key]` - Get a value
+- `value = cache.get(key, default=None)` - Get with default
+- `del cache[key]` - Delete a key
+- `cache.clear()` - Remove all items
+
 ## � Testing
 
 ### Running Tests
@@ -287,6 +561,53 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - [sled](https://github.com/spacejam/sled) - Embedded database in Rust
 - [rocksdb](https://github.com/facebook/rocksdb) - High-performance key-value store
 
+## 🤝 Contributing
+
+We welcome contributions! Here's how to get started:
+
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
+3. **Install development dependencies**: `just dev`
+4. **Make your changes** and add tests
+5. **Run the test suite**: `just test`
+6. **Format your code**: `just format`
+7. **Submit a pull request**
+
+### Development Setup
+
+```bash
+# Clone and setup
+git clone https://github.com/loonghao/diskcache_rs.git
+cd diskcache_rs
+
+# One-command setup
+just dev
+
+# Available commands
+just --list
+```
+
+### Running Tests
+
+```bash
+just test          # Run all tests
+just test-cov      # Run with coverage
+just bench         # Run benchmarks
+just format        # Format code
+just lint          # Run linting
+```
+
+## 📄 License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+
+## 🙏 Acknowledgments
+
+- [Grant Jenks](https://github.com/grantjenks) for the original python-diskcache
+- [PyO3](https://github.com/PyO3/pyo3) team for excellent Python-Rust bindings
+- [maturin](https://github.com/PyO3/maturin) for seamless Python package building
+- Rust community for the amazing ecosystem
+
 ---
 
-**Note**: This project specifically addresses network filesystem issues. If you're using local storage only, the original python-diskcache might be sufficient for your needs.
+**Note**: This project specifically addresses network filesystem issues encountered with SQLite-based caches. For local storage scenarios, both diskcache_rs and python-diskcache are excellent choices, with diskcache_rs offering superior performance.

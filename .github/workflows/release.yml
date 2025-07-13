@@ -10,9 +10,15 @@ permissions:
   contents: read
 
 jobs:
-  # Call the build workflow to build all wheels
+  # Call the build workflow to build standard wheels
   build:
     uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+
+  # Call the ABI3 build workflow to build universal wheels
+  build-abi3:
+    uses: ./.github/workflows/build-abi3.yml
     permissions:
       contents: read
 
@@ -26,7 +32,7 @@ jobs:
   release:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [build, test]
+    needs: [build, build-abi3, test]
     permissions:
       # IMPORTANT: this permission is mandatory for trusted publishing
       id-token: write

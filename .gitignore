@@ -24,6 +24,8 @@ sdist/
 var/
 include/
 man/
+.ruff_cache/
+cache/
 venv/
 *.egg-info/
 .installed.cfg

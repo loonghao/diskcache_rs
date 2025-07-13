@@ -82,6 +82,11 @@ release:
     @echo "📦 Building release wheels..."
     uvx maturin build --release
 
+# Build ABI3 wheels (compatible with Python 3.8+)
+release-abi3:
+    @echo "📦 Building ABI3 wheels..."
+    uvx maturin build --release --features abi3
+
 # Build and publish to PyPI (requires authentication)
 publish: release
     @echo "🚀 Publishing to PyPI..."
