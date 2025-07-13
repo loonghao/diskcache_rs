@@ -4,7 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+      - 'diskcache_rs-v*'  # Support release-please tag format
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
