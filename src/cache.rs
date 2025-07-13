@@ -2,8 +2,8 @@ use crate::error::CacheResult;
 use crate::eviction::{CombinedEviction, EvictionPolicy, EvictionStrategy};
 use crate::memory_cache::MemoryCache;
 use crate::migration::{detect_diskcache_format, DiskCacheMigrator};
-use crate::serialization::{create_serializer, CacheEntry, CompressionType, SerializationFormat};
-use crate::storage::{FileStorage, HybridStorage, StorageBackend, UltraFastStorage};
+use crate::serialization::{CacheEntry, OptimizedSerializer};
+use crate::storage::{OptimizedStorage, StorageBackend};
 use crate::utils::{current_timestamp, validate_cache_config, validate_key, CacheStats};
 use parking_lot::RwLock;
 use pyo3::prelude::*;
@@ -12,42 +12,17 @@ use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Storage backend types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StorageBackendType {
-    /// File-based storage (original implementation)
-    File,
-    /// Hybrid storage (memory + disk, optimized for cache workloads)
-    Hybrid,
-    /// Ultra-fast storage (memory-only, maximum speed)
-    UltraFast,
-}
+// Simplified: Only one storage backend option
+// No need for enum - always use OptimizedStorage
 
-impl Default for StorageBackendType {
-    fn default() -> Self {
-        Self::UltraFast // Use ultra-fast backend for maximum speed
-    }
-}
-
-/// Cache configuration
+/// Simplified cache configuration
 #[derive(Debug, Clone)]
 pub struct CacheConfig {
     pub directory: PathBuf,
     pub max_size: Option<u64>,
     pub max_entries: Option<u64>,
     pub eviction_strategy: EvictionStrategy,
-    pub serialization_format: SerializationFormat,
-    pub compression: CompressionType,
-    pub use_atomic_writes: bool,
-    pub use_file_locking: bool,
-    pub use_fsync: bool,
-    pub auto_vacuum: bool,
-    pub vacuum_interval: u64,   // seconds
-    pub memory_cache_size: u64, // bytes
-    pub memory_cache_entries: usize,
-    pub auto_migrate: bool,
-    pub disk_min_file_size: u64, // bytes - store small data in memory, large data in files
-    pub storage_backend: StorageBackendType, // Choose storage backend
+    // All other options are now optimized defaults
 }
 
 impl Default for CacheConfig {
@@ -57,18 +32,6 @@ impl Default for CacheConfig {
             max_size: Some(1024 * 1024 * 1024), // 1GB
             max_entries: Some(100_000),
             eviction_strategy: EvictionStrategy::LeastRecentlyStored,
-            serialization_format: SerializationFormat::Bincode,
-            compression: CompressionType::Lz4,
-            use_atomic_writes: false, // Disable for better performance
-            use_file_locking: false,  // Disable for better performance
-            use_fsync: false,         // Disable for better performance
-            auto_vacuum: true,
-            vacuum_interval: 3600,               // 1 hour
-            memory_cache_size: 64 * 1024 * 1024, // 64MB
-            memory_cache_entries: 10000,
-            auto_migrate: true,
-            disk_min_file_size: 128 * 1024, // 128KB - higher threshold for better performance
-            storage_backend: StorageBackendType::default(),
         }
     }
 }
@@ -78,16 +41,15 @@ pub struct DiskCache {
     config: CacheConfig,
     storage: Box<dyn StorageBackend>,
     eviction: Box<dyn EvictionPolicy>,
-    #[allow(dead_code)]
-    serializer: crate::serialization::Serializer,
+    serializer: OptimizedSerializer,
     stats: Arc<RwLock<CacheStats>>,
     last_vacuum: Arc<RwLock<u64>>,
     memory_cache: Option<MemoryCache>,
 }
 
 impl DiskCache {
-    /// Check if the current eviction strategy requires access time tracking
-    fn should_track_access_time(&self) -> bool {
+    /// Check if we need to track access times for the current eviction strategy
+    fn needs_access_time_tracking(&self) -> bool {
         matches!(
             self.config.eviction_strategy,
             EvictionStrategy::Lru
@@ -97,44 +59,25 @@ impl DiskCache {
         )
     }
 
-    /// Create a new cache with the given configuration
+    /// Create a new high-performance cache instance
     pub fn new(config: CacheConfig) -> CacheResult<Self> {
-        // Validate configuration
+        // Validate configuration parameters
         validate_cache_config(config.max_size, config.max_entries, &config.directory)?;
 
-        // Create storage backend based on configuration
-        let storage: Box<dyn StorageBackend> = match config.storage_backend {
-            StorageBackendType::File => Box::new(FileStorage::new(
-                &config.directory,
-                config.use_atomic_writes,
-                config.use_file_locking,
-                config.use_fsync,
-            )?),
-            StorageBackendType::Hybrid => Box::new(HybridStorage::new(
-                &config.directory,
-                config.disk_min_file_size, // Use as memory threshold
-            )?),
-            StorageBackendType::UltraFast => Box::new(UltraFastStorage::new(
-                &config.directory,
-                false, // No disk backup for maximum speed
-            )?),
-        };
+        // Initialize optimized storage backend
+        let storage: Box<dyn StorageBackend> = Box::new(OptimizedStorage::new(&config.directory)?);
 
-        // Create eviction policy
+        // Setup eviction policy
         let eviction = Box::new(CombinedEviction::new(config.eviction_strategy));
 
-        // Create serializer
-        let serializer = create_serializer(config.serialization_format, config.compression);
+        // Initialize optimized serializer (MessagePack with LZ4)
+        let serializer = OptimizedSerializer;
 
-        // Create memory cache if enabled
-        let memory_cache = if config.memory_cache_size > 0 && config.memory_cache_entries > 0 {
-            Some(MemoryCache::new(
-                config.memory_cache_entries,
-                config.memory_cache_size,
-            ))
-        } else {
-            None
-        };
+        // Enable memory cache for optimal performance
+        let memory_cache = Some(MemoryCache::new(
+            10_000,           // 10K entries
+            64 * 1024 * 1024, // 64MB
+        ));
 
         let mut cache = Self {
             config,
@@ -146,10 +89,8 @@ impl DiskCache {
             memory_cache,
         };
 
-        // Auto-migrate if needed
-        if cache.config.auto_migrate {
-            cache.auto_migrate_diskcache_data()?;
-        }
+        // Automatically migrate existing diskcache data for compatibility
+        cache.migrate_existing_data()?;
 
         Ok(cache)
     }
@@ -167,7 +108,7 @@ impl DiskCache {
     pub fn get(&self, key: &str) -> CacheResult<Option<Vec<u8>>> {
         validate_key(key)?;
 
-        let should_track_access = self.should_track_access_time();
+        let should_track_access = self.needs_access_time_tracking();
 
         // Try memory cache first
         if let Some(ref memory_cache) = self.memory_cache {
@@ -235,25 +176,11 @@ impl DiskCache {
     ) -> CacheResult<()> {
         validate_key(key)?;
 
-        // Check if we need to evict entries
-        self.maybe_evict()?;
+        // Enforce cache size and entry limits
+        self.enforce_cache_limits()?;
 
-        // Create cache entry with hybrid storage strategy
-        let entry = if value.len() as u64 >= self.config.disk_min_file_size {
-            // Large data: store in file
-            let filename = self.storage.generate_filename(key);
-            self.storage.write_data_file(&filename, value)?;
-            CacheEntry::new_file(
-                key.to_string(),
-                filename,
-                value.len() as u64,
-                tags,
-                expire_time,
-            )
-        } else {
-            // Small data: store inline
-            CacheEntry::new_inline(key.to_string(), value.to_vec(), tags, expire_time)
-        };
+        // Always use inline storage for simplicity (OptimizedStorage handles the optimization)
+        let entry = CacheEntry::new_inline(key.to_string(), value.to_vec(), tags, expire_time);
 
         // Store the entry metadata
         self.storage.set(key, entry.clone())?;
@@ -339,8 +266,8 @@ impl DiskCache {
         Ok(())
     }
 
-    /// Check if eviction is needed and perform it
-    fn maybe_evict(&self) -> CacheResult<()> {
+    /// Check cache limits and evict entries if necessary
+    fn enforce_cache_limits(&self) -> CacheResult<()> {
         let current_size = self.size()?;
         let current_entries = self.keys()?.len() as u64;
 
@@ -374,20 +301,19 @@ impl DiskCache {
             }
         }
 
-        // Auto vacuum if needed
-        if self.config.auto_vacuum {
-            let last_vacuum = *self.last_vacuum.read();
-            let now = current_timestamp();
-            if now - last_vacuum > self.config.vacuum_interval {
-                self.vacuum()?;
-            }
+        // Auto vacuum every hour
+        let last_vacuum = *self.last_vacuum.read();
+        let now = current_timestamp();
+        if now - last_vacuum > 3600 {
+            // 1 hour
+            self.vacuum()?;
         }
 
         Ok(())
     }
 
-    /// Auto-migrate from python-diskcache if detected
-    fn auto_migrate_diskcache_data(&mut self) -> CacheResult<()> {
+    /// Automatically migrate existing diskcache data if detected
+    fn migrate_existing_data(&mut self) -> CacheResult<()> {
         if detect_diskcache_format(&self.config.directory) {
             tracing::info!("Detected python-diskcache data, starting auto-migration...");
 
@@ -401,15 +327,10 @@ impl DiskCache {
                 tracing::info!("Created backup at: {:?}", backup_dir);
             }
 
-            // Perform migration
+            // Perform migration using OptimizedStorage
             let mut migrator = DiskCacheMigrator::new(
                 self.config.directory.clone(),
-                Box::new(FileStorage::new(
-                    &self.config.directory,
-                    self.config.use_atomic_writes,
-                    self.config.use_file_locking,
-                    self.config.use_fsync,
-                )?),
+                Box::new(OptimizedStorage::new(&self.config.directory)?),
             );
 
             match migrator.migrate() {
@@ -443,12 +364,7 @@ impl DiskCache {
     pub fn migrate_from_diskcache(&mut self) -> CacheResult<crate::migration::MigrationStats> {
         let mut migrator = DiskCacheMigrator::new(
             self.config.directory.clone(),
-            Box::new(FileStorage::new(
-                &self.config.directory,
-                self.config.use_atomic_writes,
-                self.config.use_file_locking,
-                self.config.use_fsync,
-            )?),
+            Box::new(OptimizedStorage::new(&self.config.directory)?),
         );
 
         migrator.migrate()
