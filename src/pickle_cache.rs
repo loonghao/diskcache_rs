@@ -1,6 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
 use pyo3::prelude::*;
-use pyo3_stub_gen::derive::gen_stub_pyfunction;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pyfunction, gen_stub_pymethods};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -50,6 +50,7 @@ impl PickleCacheEntry {
 }
 
 /// High-performance pickle cache with expiration support
+#[gen_stub_pyclass]
 #[pyclass]
 pub struct PickleCache {
     /// Cache directory
@@ -64,6 +65,7 @@ pub struct PickleCache {
     default_ttl: Option<Duration>,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PickleCache {
     #[new]
@@ -106,12 +108,18 @@ impl PickleCache {
     pub fn set_pickle(
         &mut self,
         key: &str,
-        pickled_data: &[u8],
+        pickled_data: PyObject,
         ttl_seconds: Option<i64>,
     ) -> PyResult<()> {
         let ttl = ttl_seconds.map(Duration::seconds).or(self.default_ttl);
 
-        let entry = PickleCacheEntry::new(pickled_data.to_vec(), ttl);
+        // Convert PyObject to bytes
+        let data_bytes = Python::with_gil(|py| {
+            let bytes = pickled_data.extract::<Vec<u8>>(py)?;
+            Ok::<Vec<u8>, PyErr>(bytes)
+        })?;
+
+        let entry = PickleCacheEntry::new(data_bytes, ttl);
 
         // Write to disk
         let file_path = self.get_file_path(key);

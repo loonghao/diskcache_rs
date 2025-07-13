@@ -7,6 +7,7 @@ use crate::storage::{FileStorage, HybridStorage, StorageBackend, UltraFastStorag
 use crate::utils::{current_timestamp, validate_cache_config, validate_key, CacheStats};
 use parking_lot::RwLock;
 use pyo3::prelude::*;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
@@ -456,11 +457,13 @@ impl DiskCache {
 }
 
 /// Python wrapper for the Cache
+#[gen_stub_pyclass]
 #[pyclass]
 pub struct PyCache {
     cache: DiskCache,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyCache {
     #[new]
@@ -485,12 +488,17 @@ impl PyCache {
     fn set(
         &self,
         key: &str,
-        value: &[u8],
+        value: PyObject,
         expire_time: Option<u64>,
         tags: Option<Vec<String>>,
     ) -> PyResult<()> {
         let tags = tags.unwrap_or_default();
-        Ok(self.cache.set(key, value, expire_time, tags)?)
+        // Convert PyObject to bytes for internal storage
+        let value_bytes = Python::with_gil(|py| {
+            let bytes = value.extract::<Vec<u8>>(py)?;
+            Ok::<Vec<u8>, PyErr>(bytes)
+        })?;
+        Ok(self.cache.set(key, &value_bytes, expire_time, tags)?)
     }
 
     /// Set multiple values in the cache (batch operation for better performance)
@@ -555,11 +563,13 @@ impl PyCache {
 }
 
 /// Drop-in replacement for diskcache.Cache
+#[gen_stub_pyclass]
 #[pyclass(name = "Cache")]
 pub struct RustCache {
     cache: DiskCache,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl RustCache {
     #[new]
@@ -611,7 +621,7 @@ impl RustCache {
     fn set(
         &self,
         key: &str,
-        value: &[u8],
+        value: PyObject,
         expire: Option<u64>,
         read: Option<bool>,
         tag: Option<String>,
@@ -626,7 +636,12 @@ impl RustCache {
             vec![]
         };
 
-        self.cache.set(key, value, expire, tags)?;
+        // Convert PyObject to bytes for internal storage
+        let value_bytes = Python::with_gil(|py| {
+            let bytes = value.extract::<Vec<u8>>(py)?;
+            Ok::<Vec<u8>, PyErr>(bytes)
+        })?;
+        self.cache.set(key, &value_bytes, expire, tags)?;
         Ok(true)
     }
 
@@ -665,16 +680,18 @@ impl RustCache {
 }
 
 /// Drop-in replacement for diskcache.FanoutCache
+#[gen_stub_pyclass]
 #[pyclass(name = "FanoutCache")]
 pub struct RustFanoutCache {
     caches: Vec<RustCache>,
     shards: usize,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl RustFanoutCache {
     #[new]
-    #[pyo3(signature = (directory, shards=8, **kwargs))]
+    #[pyo3(signature = (directory, shards=Some(8), **kwargs))]
     fn new(
         directory: String,
         shards: Option<usize>,
@@ -705,7 +722,7 @@ impl RustFanoutCache {
     fn set(
         &self,
         key: &str,
-        value: &[u8],
+        value: PyObject,
         expire: Option<u64>,
         read: Option<bool>,
         tag: Option<String>,

@@ -147,3 +147,11 @@ check-version:
 generate-stubs:
     @echo "📝 Generating Python stub files..."
     cargo run --bin stub_gen
+    @echo "✅ Stub files generated successfully"
+
+# Verify stub files are included in wheel
+verify-stubs:
+    @echo "🔍 Verifying stub files in wheel..."
+    uvx maturin build --release
+    python -m zipfile -l target/wheels/*.whl | grep "\.pyi"
+    @echo "✅ Stub files verified in wheel package"
