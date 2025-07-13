@@ -62,7 +62,7 @@ bindings = "pyo3"
 
 [tool.ruff]
 line-length = 88
-target-version = "0.1.0"
+target-version = "py38"
 
 [tool.ruff.lint]
 select = [
