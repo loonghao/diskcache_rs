@@ -81,42 +81,22 @@ jobs:
 
       - name: Generate changelog
         id: changelog
-        run: |
-          # Check if any tags exist
-          if git describe --tags --abbrev=0 >/dev/null 2>&1; then
-            # Get the latest tag
-            LATEST_TAG=$(git describe --tags --abbrev=0)
-
-            # Try to get previous tag
-            if PREVIOUS_TAG=$(git describe --tags --abbrev=0 $LATEST_TAG^ 2>/dev/null); then
-              echo "## Changes in $LATEST_TAG" > CHANGELOG.md
-              echo "" >> CHANGELOG.md
-
-              # Get commits between tags
-              git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..$LATEST_TAG >> CHANGELOG.md
-            else
-              # Only one tag exists, show all commits up to this tag
-              echo "## Changes in $LATEST_TAG" > CHANGELOG.md
-              echo "" >> CHANGELOG.md
-
-              # Get all commits up to the tag
-              git log --pretty=format:"- %s (%h)" $LATEST_TAG >> CHANGELOG.md
-            fi
-          else
-            # No tags exist, create changelog from all commits
-            echo "## Initial Release" > CHANGELOG.md
-            echo "" >> CHANGELOG.md
-            echo "This is the first release of diskcache_rs." >> CHANGELOG.md
-            echo "" >> CHANGELOG.md
-            echo "### All Changes:" >> CHANGELOG.md
-
-            # Get all commits
-            git log --pretty=format:"- %s (%h)" >> CHANGELOG.md
-          fi
-
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          cat CHANGELOG.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+        uses: jaywcjlove/changelog-generator@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          filter-author: (loonghao|renovate\[bot\]|dependabot\[bot\]|Renovate Bot)
+          filter: '[R|r]elease[d]\s+[v|V]\d(\.\d+){0,2}'
+          template: |
+            ## Bugs
+            {{fix}}
+            ## Feature
+            {{feat}}
+            ## Improve
+            {{refactor,perf,clean}}
+            ## Misc
+            {{chore,style,ci}} 🔧 Nothing change}}
+            ## Unknown
+            {{__unknown__}}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -124,11 +104,11 @@ jobs:
           path: release-artifacts
           merge-multiple: true
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - uses: ncipollo/release-action@v1
         with:
-          body: ${{ steps.changelog.outputs.changelog }}
-          files: release-artifacts/*
-          draft: false
-          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
-          generate_release_notes: true
+          artifacts: "release-artifacts/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            Comparing Changes: ${{ steps.changelog.outputs.compareurl }}
+
+            ${{ steps.changelog.outputs.changelog }}
