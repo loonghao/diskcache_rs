@@ -249,7 +249,8 @@ mod performance_tests {
         }
         let duration = start.elapsed();
 
-        println!(
+        #[cfg(test)]
+        eprintln!(
             "UltraFast SET: {} ops in {:?} ({:.1} ops/s)",
             iterations,
             duration,
