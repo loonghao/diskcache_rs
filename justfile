@@ -125,11 +125,20 @@ sync-version:
     @echo "🔄 Syncing version between Cargo.toml and pyproject.toml..."
     python scripts/sync_version.py
 
-# Release-plz commands
-release-pr:
-    @echo "📝 Creating release PR..."
-    uvx release-plz release-pr
+# Commitizen commands
+commit:
+    @echo "📝 Creating conventional commit..."
+    uvx --from commitizen cz commit
 
-release-plz-release:
-    @echo "🚀 Running release-plz release..."
-    uvx release-plz release
+bump:
+    @echo "🚀 Bumping version with commitizen..."
+    uvx --from commitizen cz bump
+
+changelog:
+    @echo "📋 Generating changelog..."
+    uvx --from commitizen cz changelog
+
+# Check version consistency
+check-version:
+    @echo "🔍 Checking version consistency..."
+    uvx --from commitizen cz check --rev-range HEAD~1..HEAD
