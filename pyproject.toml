@@ -63,6 +63,18 @@ bindings = "pyo3"
 [tool.ruff]
 line-length = 88
 target-version = "py38"
+# Only check core Python source files
+include = ["python/diskcache_rs/**/*.py"]
+exclude = [
+    "tests/**",
+    "scripts/**",
+    "benchmarks/**",
+    "examples/**",
+    "*.py",  # Exclude root level Python files
+    "python/diskcache_rs/__pycache__/**",
+    "python/diskcache_rs/*.pyd",
+    "python/diskcache_rs/*.so"
+]
 
 [tool.ruff.lint]
 select = [

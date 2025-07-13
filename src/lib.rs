@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
+use pyo3_stub_gen::{derive::gen_stub_pyfunction, define_stub_info_gatherer};
 
 mod cache;
 mod error;
@@ -39,7 +40,11 @@ fn _diskcache_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 /// Python wrapper for detect_diskcache_format
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn detect_diskcache_format_py(path: String) -> bool {
     migration::detect_diskcache_format(std::path::Path::new(&path))
 }
+
+// Define a function to gather stub information
+define_stub_info_gatherer!(stub_info);
