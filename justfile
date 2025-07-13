@@ -119,3 +119,17 @@ audit:
 test-file FILE:
     @echo "🧪 Running tests in {{FILE}}..."
     uv run python -m pytest {{FILE}} -v
+
+# Sync version between Cargo.toml and pyproject.toml
+sync-version:
+    @echo "🔄 Syncing version between Cargo.toml and pyproject.toml..."
+    python scripts/sync_version.py
+
+# Release-plz commands
+release-pr:
+    @echo "📝 Creating release PR..."
+    uvx release-plz release-pr
+
+release-plz-release:
+    @echo "🚀 Running release-plz release..."
+    uvx release-plz release
