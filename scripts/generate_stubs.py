@@ -7,10 +7,8 @@ for the Rust-implemented modules and creates comprehensive stubs
 for the entire package.
 """
 
-import os
-import sys
 import subprocess
-import shutil
+import sys
 from pathlib import Path
 
 
@@ -87,8 +85,8 @@ def main():
                     f"uvx mypy stubgen {module_path} -o {python_dir}", cwd=project_root
                 )
                 print(f"✅ Generated {stub_path.name}")
-            except:
-                print(f"⚠️  Failed to generate stub for {module}")
+            except Exception as e:
+                print(f"⚠️  Failed to generate stub for {module}: {e}")
 
     # Generate main __init__.pyi
     print("📝 Generating main __init__.pyi...")
@@ -104,7 +102,7 @@ from pathlib import Path
 
 # Re-export main classes
 from .cache import Cache, FanoutCache
-from .fast_cache import FastCache, FastFanoutCache  
+from .fast_cache import FastCache, FastFanoutCache
 from .pickle_cache import PickleCache, cache_object, clear_cache, get_cached_object
 
 # Import Rust functions if available
