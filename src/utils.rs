@@ -101,7 +101,7 @@ pub fn is_network_path(path: &std::path::Path) -> bool {
 
 /// Retry mechanism for operations that might fail on network filesystems
 #[allow(dead_code)]
-pub async fn retry_operation<F, T, E>(
+pub fn retry_operation<F, T, E>(
     operation: F,
     max_retries: usize,
     initial_delay_ms: u64,
@@ -127,7 +127,7 @@ where
                     e
                 );
 
-                tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+                std::thread::sleep(std::time::Duration::from_millis(delay));
                 delay = std::cmp::min(delay * 2, 5000); // Exponential backoff, max 5s
             }
         }

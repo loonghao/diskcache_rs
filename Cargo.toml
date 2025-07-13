@@ -37,7 +37,7 @@ postcard = { version = "1.1", features = ["alloc"] }
 # SQLite for diskcache-compatible storage
 rusqlite = { version = "0.37", features = ["bundled", "blob", "chrono"] }
 
-tokio = { version = "1.0", features = ["full"] }
+# tokio removed - using std::thread instead for simplicity
 parking_lot = "0.12"
 dashmap = "6.1"
 lz4_flex = "0.11"
