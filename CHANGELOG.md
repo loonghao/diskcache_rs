@@ -1,3 +1,9 @@
+## v0.2.4 (2025-07-21)
+
+### Fix
+
+- **deps**: update rust crate serde_json to v1.0.141
+
 ## v0.2.3 (2025-07-13)
 
 ### Fix
