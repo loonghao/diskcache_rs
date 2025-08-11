@@ -81,7 +81,7 @@ jobs:
       actions: read    # Required for downloading artifacts
       attestations: write  # Required for artifact attestation
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
