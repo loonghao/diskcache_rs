@@ -218,7 +218,7 @@ impl WriteBatcher {
     }
 
     fn sync(&self) {
-        let (done_tx, done_rx) = mpsc::sync_channel(1);
+        let (done_tx, done_rx) = mpsc::sync_channel(0); // Rendezvous channel for immediate sync
         let _ = self.sender.send(WriteOp::Sync { done: done_tx });
         // Wait for sync to complete
         let _ = done_rx.recv();
@@ -573,13 +573,13 @@ impl OptimizedStorage {
         self.hot_cache.remove(key);
         self.warm_cache.remove(key);
 
-        if data_size < 256 {
-            // Small data: store in hot cache only (< 256 bytes)
+        if data_size < 1024 {
+            // Small data: store in hot cache only (< 1KB)
             self.hot_cache
                 .insert(key.to_string(), Bytes::copy_from_slice(data));
             self.cleanup_hot_cache();
         } else {
-            // Large data: compress and store to disk (>= 256 bytes)
+            // Large data: compress and store to disk (>= 1KB)
             let (compressed_data, is_compressed) = self.compress_if_beneficial(data);
             let file_path = self.build_file_path(key);
 
