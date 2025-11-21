@@ -8,6 +8,7 @@ description = "A high-performance disk cache implementation in Rust with Python 
 authors = [
     {name = "longhao", email = "hal.long@outlook.com"},
 ]
+readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.8"
 classifiers = [
@@ -23,13 +24,16 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Database",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Archiving",
 ]
 keywords = ["cache", "disk", "storage", "performance", "rust"]
 dynamic = ["version"]
-dependencies = []
+dependencies = [
+    "importlib-metadata>=1.0; python_version<'3.8'",
+]
 
 [dependency-groups]
 test = [

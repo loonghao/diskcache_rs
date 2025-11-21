@@ -18,7 +18,18 @@ except ImportError:
     rust_pickle_dumps = None
     rust_pickle_loads = None
 
-__version__ = "0.1.0"
+# Version is managed by maturin and synced from Cargo.toml
+try:
+    from importlib.metadata import version, PackageNotFoundError
+except ImportError:
+    # Python 3.7 fallback
+    from importlib_metadata import version, PackageNotFoundError  # type: ignore
+
+try:
+    __version__ = version("diskcache_rs")
+except PackageNotFoundError:
+    # Development mode fallback
+    __version__ = "0.0.0-dev"
 __all__ = [
     "Cache",
     "FanoutCache",
