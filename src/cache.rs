@@ -16,6 +16,10 @@ use std::sync::Arc;
 // No need for enum - always use OptimizedStorage
 
 /// Simplified cache configuration
+///
+/// # Fields
+/// * `disk_write_threshold` - Size threshold in bytes for writing to disk (vs memory-only). Default: 1KB
+/// * `use_file_locking` - Enable file locking for NFS scenarios. Default: false
 #[derive(Debug, Clone)]
 pub struct CacheConfig {
     pub directory: PathBuf,
