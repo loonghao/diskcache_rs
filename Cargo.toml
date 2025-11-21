@@ -52,6 +52,8 @@ serde-pickle = "1.1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 crossbeam = "0.8"
+# Cross-platform file locking for NFS support
+fs4 = "0.13"
 
 lru = "0.16"
 
