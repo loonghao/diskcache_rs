@@ -47,8 +47,15 @@ class Cache:
         Args:
             directory: Cache directory path
             timeout: Operation timeout (not used in Rust implementation)
-            disk_min_file_size: Minimum file size for disk storage (not used)
-            **kwargs: Additional arguments (max_size, max_entries, etc.)
+            disk_min_file_size: Minimum file size for disk storage (deprecated, use disk_write_threshold)
+            **kwargs: Additional arguments:
+                - max_size / size_limit: Maximum cache size in bytes (default: 1GB)
+                - max_entries / count_limit: Maximum number of entries (default: 100,000)
+                - disk_write_threshold: Size threshold for writing to disk vs memory-only (default: 1024 bytes)
+                  Items smaller than this threshold are stored in memory only and won't create disk files.
+                  Set to 0 to write all items to disk (useful for testing/debugging).
+                - use_file_locking: Enable file locking for NFS scenarios (default: False)
+                  Enable this when using cache on network filesystems to prevent corruption.
         """
         if directory is None:
             directory = os.path.join(os.getcwd(), "cache")
@@ -62,10 +69,18 @@ class Cache:
         )  # 1GB default
         max_entries = kwargs.get("count_limit", kwargs.get("max_entries", 100_000))
 
+        # New configuration options for issue #17
+        disk_write_threshold = kwargs.get("disk_write_threshold", 1024)  # 1KB default
+        use_file_locking = kwargs.get("use_file_locking", False)
+
         # Create the underlying Rust cache
         _RustCache = _get_rust_cache()
         self._cache = _RustCache(
-            str(self.directory), max_size=max_size, max_entries=max_entries
+            str(self.directory),
+            max_size=max_size,
+            max_entries=max_entries,
+            disk_write_threshold=disk_write_threshold,
+            use_file_locking=use_file_locking,
         )
 
     def set(

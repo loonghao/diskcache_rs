@@ -22,7 +22,8 @@ pub struct CacheConfig {
     pub max_size: Option<u64>,
     pub max_entries: Option<u64>,
     pub eviction_strategy: EvictionStrategy,
-    // All other options are now optimized defaults
+    pub disk_write_threshold: usize, // Size threshold for writing to disk (vs memory-only)
+    pub use_file_locking: bool,      // Enable file locking for NFS scenarios
 }
 
 impl Default for CacheConfig {
@@ -32,6 +33,8 @@ impl Default for CacheConfig {
             max_size: Some(1024 * 1024 * 1024), // 1GB
             max_entries: Some(100_000),
             eviction_strategy: EvictionStrategy::LeastRecentlyStored,
+            disk_write_threshold: 1024, // 1KB - data smaller than this stays in memory only
+            use_file_locking: false,    // Disabled by default for performance
         }
     }
 }
@@ -65,8 +68,20 @@ impl DiskCache {
         // Validate configuration parameters
         validate_cache_config(config.max_size, config.max_entries, &config.directory)?;
 
-        // Initialize optimized storage backend
-        let storage: Box<dyn StorageBackend> = Box::new(OptimizedStorage::new(&config.directory)?);
+        // Create storage config from cache config
+        let storage_config = crate::storage::optimized_backend::StorageConfig {
+            disk_write_threshold: config.disk_write_threshold,
+            use_file_locking: config.use_file_locking,
+            ..Default::default()
+        };
+
+        // Initialize optimized storage backend with config
+        let storage: Box<dyn StorageBackend> = Box::new(
+            crate::storage::optimized_backend::OptimizedStorage::with_config(
+                &config.directory,
+                storage_config,
+            )?,
+        );
 
         // Setup eviction policy
         let eviction = Box::new(CombinedEviction::new(config.eviction_strategy));
@@ -500,6 +515,15 @@ impl RustCache {
 
             if let Ok(Some(count_limit)) = kwargs.get_item("count_limit") {
                 config.max_entries = count_limit.extract::<Option<u64>>()?;
+            }
+
+            // New configuration options for issue #17
+            if let Ok(Some(disk_write_threshold)) = kwargs.get_item("disk_write_threshold") {
+                config.disk_write_threshold = disk_write_threshold.extract::<usize>()?;
+            }
+
+            if let Ok(Some(use_file_locking)) = kwargs.get_item("use_file_locking") {
+                config.use_file_locking = use_file_locking.extract::<bool>()?;
             }
         }
 

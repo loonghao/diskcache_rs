@@ -50,6 +50,8 @@ pub struct StorageConfig {
     pub compression_threshold: usize, // Size threshold for compression
     pub use_compression: bool,
     pub sync_writes: bool,
+    pub disk_write_threshold: usize, // Size threshold for writing to disk (vs memory-only)
+    pub use_file_locking: bool,      // Enable file locking for NFS scenarios
 }
 
 impl Default for StorageConfig {
@@ -62,6 +64,8 @@ impl Default for StorageConfig {
             compression_threshold: 1024, // 1KB
             use_compression: true,
             sync_writes: false,
+            disk_write_threshold: 1024, // 1KB - data smaller than this stays in memory only
+            use_file_locking: false,    // Disabled by default for performance
         }
     }
 }
@@ -573,13 +577,13 @@ impl OptimizedStorage {
         self.hot_cache.remove(key);
         self.warm_cache.remove(key);
 
-        if data_size < 1024 {
-            // Small data: store in hot cache only (< 1KB)
+        if data_size < self.config.disk_write_threshold {
+            // Small data: store in hot cache only (below disk_write_threshold)
             self.hot_cache
                 .insert(key.to_string(), Bytes::copy_from_slice(data));
             self.cleanup_hot_cache();
         } else {
-            // Large data: compress and store to disk (>= 1KB)
+            // Large data: compress and store to disk (>= disk_write_threshold)
             let (compressed_data, is_compressed) = self.compress_if_beneficial(data);
             let file_path = self.build_file_path(key);
 
@@ -592,8 +596,11 @@ impl OptimizedStorage {
             };
             self.cold_index.write().insert(key.to_string(), file_info);
 
-            // Write to disk (async for better performance)
-            if self.config.sync_writes || data_size > 1024 * 1024 {
+            // Write to disk with optional file locking
+            if self.config.use_file_locking {
+                // Use file locking for NFS scenarios
+                self.write_with_lock(&file_path, &compressed_data)?;
+            } else if self.config.sync_writes || data_size > 1024 * 1024 {
                 // Large files or sync mode: write immediately
                 std::fs::write(&file_path, &compressed_data).map_err(CacheError::Io)?;
             } else {
@@ -602,6 +609,43 @@ impl OptimizedStorage {
             }
         }
 
+        Ok(())
+    }
+
+    /// Write data to file with exclusive lock (for NFS scenarios)
+    fn write_with_lock(&self, file_path: &Path, data: &[u8]) -> CacheResult<()> {
+        use fs4::FileExt;
+
+        // Create parent directory if it doesn't exist
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent).map_err(CacheError::Io)?;
+        }
+
+        // Open file for writing (create if doesn't exist)
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(file_path)
+            .map_err(CacheError::Io)?;
+
+        // Acquire exclusive lock (blocks until lock is available)
+        file.lock_exclusive().map_err(|e| {
+            CacheError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to acquire file lock: {}", e),
+            ))
+        })?;
+
+        // Write data using buffered writer for better performance
+        let mut writer = BufWriter::new(&file);
+        writer.write_all(data).map_err(CacheError::Io)?;
+        writer.flush().map_err(CacheError::Io)?;
+
+        // Sync to disk to ensure data is written
+        file.sync_all().map_err(CacheError::Io)?;
+
+        // Lock is automatically released when file is dropped
         Ok(())
     }
 
