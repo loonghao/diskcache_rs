@@ -51,7 +51,7 @@ jobs:
       url: https://pypi.org/p/diskcache_rs
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           path: dist
           merge-multiple: true
@@ -105,7 +105,7 @@ jobs:
             {{__unknown__}}
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           path: release-artifacts
           merge-multiple: true
