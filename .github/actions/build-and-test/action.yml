@@ -31,7 +31,7 @@ runs:
       if: inputs.generate-stubs == 'true'
       shell: bash
       run: |
-        uv run pyo3-stubgen diskcache_rs._diskcache_rs -o python/diskcache_rs/
+        uv run pyo3-stubgen diskcache_rs._diskcache_rs python/diskcache_rs/
         echo "✅ Type stubs generated successfully"
 
     - name: Run basic tests
