@@ -5,9 +5,10 @@ use bytes::{Bytes, BytesMut};
 use dashmap::DashMap;
 use memmap2::{Mmap, MmapOptions};
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
-use std::io::{BufWriter, Write};
+use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -77,7 +78,7 @@ struct MmapEntry {
     last_accessed: AtomicU64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct FileInfo {
     path: PathBuf,
     #[allow(dead_code)]
@@ -280,9 +281,9 @@ impl OptimizedStorage {
         let data_dir = directory.join("data");
         std::fs::create_dir_all(&data_dir).map_err(CacheError::Io)?;
 
-        let write_batcher = Arc::new(WriteBatcher::new(data_dir, config.batch_size));
+        let write_batcher = Arc::new(WriteBatcher::new(data_dir.clone(), config.batch_size));
 
-        Ok(Self {
+        let mut storage = Self {
             directory,
             hot_cache: Arc::new(DashMap::with_capacity(config.hot_cache_size)),
             warm_cache: Arc::new(DashMap::with_capacity(config.warm_cache_size)),
@@ -291,7 +292,68 @@ impl OptimizedStorage {
             write_batcher,
             config,
             stats: Arc::new(StorageStats::default()),
-        })
+        };
+
+        // Scan existing files to rebuild the cold index
+        storage.rebuild_index_from_disk()?;
+
+        Ok(storage)
+    }
+
+    /// Rebuild the cold index by scanning existing files on disk
+    fn rebuild_index_from_disk(&mut self) -> CacheResult<()> {
+        // Try to load index from persistent index file first
+        let index_path = self.directory.join("index.json");
+        if index_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&index_path) {
+                if let Ok(persisted_index) =
+                    serde_json::from_str::<std::collections::HashMap<String, FileInfo>>(&content)
+                {
+                    let mut index = self.cold_index.write();
+                    for (key, file_info) in persisted_index {
+                        // Verify file still exists
+                        if file_info.path.exists() {
+                            index.insert(key, file_info);
+                        }
+                    }
+                    return Ok(());
+                }
+            }
+        }
+
+        // Fallback: scan data directory (less efficient, but works for recovery)
+        let data_dir = self.directory.join("data");
+        if !data_dir.exists() {
+            return Ok(());
+        }
+
+        // Note: Without the index file, we can't recover the original keys
+        // because we use blake3 hash for filenames. This is a known limitation.
+        // Users should call vacuum() periodically to persist the index.
+
+        Ok(())
+    }
+
+    /// Persist the cold index to disk for recovery after restart
+    fn persist_index(&self) -> CacheResult<()> {
+        let index_path = self.directory.join("index.json");
+        let index = self.cold_index.read();
+
+        // Convert DashMap to HashMap for serialization
+        let index_map: std::collections::HashMap<String, FileInfo> = index
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
+
+        let json = serde_json::to_string_pretty(&index_map).map_err(|e| {
+            CacheError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to serialize index: {}", e),
+            ))
+        })?;
+
+        std::fs::write(&index_path, json).map_err(CacheError::Io)?;
+        Ok(())
     }
 
     fn get_current_timestamp() -> u64 {
@@ -547,6 +609,9 @@ impl StorageBackend for OptimizedStorage {
 
         // Sync pending writes
         self.write_batcher.sync();
+
+        // Persist index to disk for recovery after restart
+        self.persist_index()?;
 
         Ok(())
     }
