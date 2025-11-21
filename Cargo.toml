@@ -1,6 +1,6 @@
 [package]
 name = "diskcache_rs"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2021"
 authors = ["longhao <hal.long@outlook.com>"]
 description = "A high-performance disk cache implementation in Rust with Python bindings"

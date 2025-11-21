@@ -1,3 +1,21 @@
+## v0.3.0 (2025-11-21)
+
+### Feat
+
+- add pre-commit hooks and fix dead code warnings
+- reduce disk write threshold from 4KB to 256 bytes
+
+### Fix
+
+- correct pyo3-stubgen command syntax
+- make vacuum() synchronous to ensure disk writes complete
+- resolve CI build issues and remove analysis doc
+- resolve version mismatch and optimize CI configuration
+
+### Perf
+
+- increase disk write threshold from 256B to 1KB for better performance
+
 ## v0.2.4 (2025-07-21)
 
 ### Fix
