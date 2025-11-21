@@ -1,0 +1,70 @@
+name: 'Build and Test DiskCache RS'
+description: 'Build the extension and run tests'
+inputs:
+  test-type:
+    description: 'Type of tests to run (basic, full)'
+    required: false
+    default: 'basic'
+  generate-stubs:
+    description: 'Whether to generate type stubs'
+    required: false
+    default: 'false'
+  upload-artifacts:
+    description: 'Whether to upload test artifacts'
+    required: false
+    default: 'false'
+  artifact-name:
+    description: 'Name for uploaded artifacts'
+    required: false
+    default: 'test-results'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install build dependencies
+      shell: bash
+      run: uv pip install maturin
+
+    - name: Build extension
+      shell: bash
+      run: uv run maturin develop
+      env:
+        RUST_BACKTRACE: 1
+
+    - name: Generate type stubs
+      if: inputs.generate-stubs == 'true'
+      shell: bash
+      run: |
+        uv run pyo3-stubgen diskcache_rs._diskcache_rs -o python/diskcache_rs/
+        echo "✅ Type stubs generated successfully"
+
+    - name: Run basic tests
+      if: inputs.test-type == 'basic'
+      shell: bash
+      run: uv run python -m pytest tests/ -v --tb=short -m "not docker and not slow"
+      env:
+        PYTHONUNBUFFERED: 1
+
+    - name: Run full tests
+      if: inputs.test-type == 'full'
+      shell: bash
+      run: uv run python -m pytest tests/ -v --tb=short -m "not docker"
+      env:
+        PYTHONUNBUFFERED: 1
+
+    - name: Verify import
+      shell: bash
+      run: |
+        uv run python -c 'import diskcache_rs; print(f"✅ diskcache_rs v{diskcache_rs.__version__} imported successfully")'
+
+    - name: Upload test artifacts
+      if: inputs.upload-artifacts == 'true' && always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: |
+          .coverage
+          htmlcov/
+          test-results/
+        retention-days: 7
+

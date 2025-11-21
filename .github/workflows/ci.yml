@@ -12,40 +12,56 @@ permissions:
   contents: read
 
 jobs:
-  # Code quality and testing
-  test:
-    name: Test Suite
-    runs-on: ${{ matrix.os }}
+  # Quick validation - runs on every PR
+  quick-test:
+    name: Quick Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.10", "3.12"]  # Test min, stable, and recent
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup DiskCache RS Environment
+        uses: ./.github/actions/setup-diskcache-rs
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache-key-suffix: 'quick-test'
+
+      - name: Build and Test
+        uses: ./.github/actions/build-and-test
+        with:
+          test-type: 'basic'
+          generate-stubs: 'true'
+
+  # Comprehensive testing - runs on main branch
+  full-test:
+    name: Full Test Suite (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+
     steps:
       - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+
+      - name: Setup DiskCache RS Environment
+        uses: ./.github/actions/setup-diskcache-rs
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: Install dependencies
-        run: uv sync --group dev
-      - name: Install build dependencies
-        run: uv pip install maturin
-      - name: Build extension
-        run: uv run maturin develop
-        env:
-          RUST_BACKTRACE: 1
-      - name: Generate type stubs
-        run: |
-          uv run pyo3-stubgen diskcache_rs._diskcache_rs python/diskcache_rs/
-          echo "✅ Type stubs generated successfully"
-      - name: Run pytest
-        run: uv run python -m pytest tests/ -v --tb=short -m "not docker"
-        env:
-          PYTHONUNBUFFERED: 1
-      - name: Run basic functionality tests
-        run: uv run python -c 'import diskcache_rs; print("diskcache_rs imported successfully")'
+          cache-key-suffix: 'full-test-${{ matrix.os }}'
+
+      - name: Build and Test
+        uses: ./.github/actions/build-and-test
+        with:
+          test-type: 'full'
+          upload-artifacts: 'true'
+          artifact-name: 'full-test-results-${{ matrix.os }}-py${{ matrix.python-version }}'
 
   # Code formatting and linting
   lint:
@@ -53,21 +69,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+
+      - name: Setup DiskCache RS Environment
+        uses: ./.github/actions/setup-diskcache-rs
         with:
           python-version: "3.11"
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - name: Install dependencies
-        run: uv sync --group dev
+          rust-components: 'rustfmt,clippy'
+          cache-key-suffix: 'lint'
+
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
+
       - name: Run Clippy
-        run: cargo clippy --all-targets --all-features
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
       - name: Run ruff check
         run: uv run ruff check .
+
       - name: Run ruff format check
         run: uv run ruff format --check .
+
+  # Overall CI status check
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [quick-test, lint]
+    if: always()
+
+    steps:
+      - name: Check all required jobs
+        run: |
+          if [[ "${{ needs.quick-test.result }}" != "success" ]]; then
+            echo "❌ Quick tests failed"
+            exit 1
+          fi
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "❌ Linting failed"
+            exit 1
+          fi
+          echo "✅ All required CI checks passed"
