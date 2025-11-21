@@ -3,7 +3,7 @@ Tests for version management and disk write threshold improvements.
 
 This module tests the fixes for issue #17:
 1. Version management (dynamic version from Cargo.toml)
-2. Disk write threshold (256 bytes instead of 4KB)
+2. Disk write threshold (1KB instead of 4KB)
 3. Vacuum method for manual sync
 """
 
@@ -67,14 +67,14 @@ class TestDiskWriteThreshold:
     """Test disk write threshold improvements"""
 
     def test_small_data_in_memory(self):
-        """Test that very small data (< 256 bytes) stays in memory"""
+        """Test that very small data (< 1KB) stays in memory"""
         cache_dir = tempfile.mkdtemp(prefix="test_cache_small_")
 
         try:
             cache = Cache(cache_dir)
 
-            # Store very small data (< 256 bytes)
-            small_data = "x" * 100  # 100 bytes
+            # Store very small data (< 1KB)
+            small_data = "x" * 500  # 500 bytes
             cache.set("small_key", small_data)
 
             # Force sync
@@ -96,14 +96,14 @@ class TestDiskWriteThreshold:
             shutil.rmtree(cache_dir, ignore_errors=True)
 
     def test_medium_data_on_disk(self):
-        """Test that medium data (>= 256 bytes) is written to disk"""
+        """Test that medium data (>= 1KB) is written to disk"""
         cache_dir = tempfile.mkdtemp(prefix="test_cache_medium_")
 
         try:
             cache = Cache(cache_dir)
 
-            # Store medium data (>= 256 bytes)
-            medium_data = "y" * 300  # 300 bytes
+            # Store medium data (>= 1KB)
+            medium_data = "y" * 1500  # 1.5KB
             cache.set("medium_key", medium_data)
 
             # Force sync to ensure async writes complete
@@ -221,8 +221,8 @@ class TestVacuumMethod:
         try:
             cache = Cache(cache_dir)
 
-            # Write data
-            cache.set("test_key", "x" * 500)
+            # Write data (>= 1KB to ensure disk write)
+            cache.set("test_key", "x" * 1500)
 
             # Before vacuum, files might not be written yet (async)
             # After vacuum, files should be synced
@@ -272,8 +272,8 @@ class TestDiskFileVisibility:
         try:
             cache = Cache(cache_dir)
 
-            # Store data
-            test_value = "test_data" * 50  # 450 bytes
+            # Store data (>= 1KB to ensure disk write)
+            test_value = "test_data" * 150  # ~1.35KB
             cache.set("readable_key", test_value)
             cache.vacuum()
 
@@ -301,9 +301,9 @@ class TestDiskFileVisibility:
         cache_dir = tempfile.mkdtemp(prefix="test_cache_persist_")
 
         try:
-            # First instance: write data
+            # First instance: write data (>= 1KB to ensure disk write)
             cache1 = Cache(cache_dir)
-            test_value = "persistent_data" * 50  # 750 bytes
+            test_value = "persistent_data" * 100  # ~1.5KB
             cache1.set("persist_key", test_value)
             cache1.vacuum()
 
