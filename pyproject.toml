@@ -50,6 +50,7 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "pyo3-stubgen>=0.3.0",
+    "pre-commit>=3.0.0",
 ]
 
 [project.urls]
@@ -96,6 +97,8 @@ ignore = [
     "C901",  # too complex
     "W293",  # blank line contains whitespace
     "B904",  # raise ... from err
+    "UP006", # Use list/dict instead of List/Dict - not compatible with Python 3.8
+    "UP007", # Use X | Y for type annotations - not compatible with Python 3.8
 ]
 
 [tool.ruff.format]
@@ -129,5 +132,3 @@ filterwarnings = [
     "ignore::UserWarning",
     "ignore::DeprecationWarning",
 ]
-
-

@@ -41,6 +41,7 @@ pub struct DiskCache {
     config: CacheConfig,
     storage: Box<dyn StorageBackend>,
     eviction: Box<dyn EvictionPolicy>,
+    #[allow(dead_code)]
     serializer: OptimizedSerializer,
     stats: Arc<RwLock<CacheStats>>,
     last_vacuum: Arc<RwLock<u64>>,

@@ -35,7 +35,7 @@ class PerformanceTester:
     def __init__(self):
         self.data_sizes = [
             (100, "100B"),
-            (1024, "1KB"), 
+            (1024, "1KB"),
             (4096, "4KB"),
             (16384, "16KB"),
             (32768, "32KB"),
@@ -43,38 +43,38 @@ class PerformanceTester:
             (131072, "128KB"),
             (262144, "256KB"),
         ]
-        
+
         self.test_counts = {
             "quick": 100,
             "standard": 500,
             "intensive": 1000,
         }
-        
+
     def generate_test_data(self, size: int) -> bytes:
         """Generate random test data of specified size"""
         return ''.join(random.choices(string.ascii_letters + string.digits, k=size)).encode()
-    
+
     def generate_keys(self, count: int) -> List[str]:
         """Generate unique test keys"""
         return [f"test_key_{i:06d}" for i in range(count)]
-    
+
     def measure_operation(self, operation, *args, **kwargs) -> Tuple[float, Any]:
         """Measure operation execution time and return result"""
         start_time = time.perf_counter()
         result = operation(*args, **kwargs)
         end_time = time.perf_counter()
         return (end_time - start_time) * 1_000_000, result  # Return microseconds
-    
+
     def run_set_performance_test(self, cache, data_size: int, count: int) -> Dict[str, float]:
         """Test SET operation performance"""
         test_data = self.generate_test_data(data_size)
         keys = self.generate_keys(count)
         times = []
-        
+
         for key in keys:
             duration, _ = self.measure_operation(cache.set, key, test_data)
             times.append(duration)
-        
+
         return {
             "avg": statistics.mean(times),
             "median": statistics.median(times),
@@ -83,23 +83,23 @@ class PerformanceTester:
             "p95": statistics.quantiles(times, n=20)[18],  # 95th percentile
             "ops_per_sec": 1_000_000 / statistics.mean(times),
         }
-    
+
     def run_get_performance_test(self, cache, data_size: int, count: int) -> Dict[str, float]:
         """Test GET operation performance"""
         test_data = self.generate_test_data(data_size)
         keys = self.generate_keys(count)
-        
+
         # First populate the cache
         for key in keys:
             cache.set(key, test_data)
-        
+
         # Now measure GET performance
         times = []
         for key in keys:
             duration, result = self.measure_operation(cache.get, key)
             times.append(duration)
             assert result == test_data, "Data integrity check failed"
-        
+
         return {
             "avg": statistics.mean(times),
             "median": statistics.median(times),
@@ -108,23 +108,23 @@ class PerformanceTester:
             "p95": statistics.quantiles(times, n=20)[18],
             "ops_per_sec": 1_000_000 / statistics.mean(times),
         }
-    
+
     def run_delete_performance_test(self, cache, data_size: int, count: int) -> Dict[str, float]:
         """Test DELETE operation performance"""
         test_data = self.generate_test_data(data_size)
         keys = self.generate_keys(count)
-        
+
         # First populate the cache
         for key in keys:
             cache.set(key, test_data)
-        
+
         # Now measure DELETE performance
         times = []
         for key in keys:
             duration, result = self.measure_operation(cache.delete, key)
             times.append(duration)
             assert result is True, "Delete should return True for existing keys"
-        
+
         return {
             "avg": statistics.mean(times),
             "median": statistics.median(times),
@@ -133,16 +133,16 @@ class PerformanceTester:
             "p95": statistics.quantiles(times, n=20)[18],
             "ops_per_sec": 1_000_000 / statistics.mean(times),
         }
-    
+
     def run_mixed_workload_test(self, cache, data_size: int, count: int) -> Dict[str, Any]:
         """Test mixed workload (70% GET, 20% SET, 10% DELETE)"""
         test_data = self.generate_test_data(data_size)
         keys = self.generate_keys(count)
-        
+
         # Pre-populate with some data
         for i in range(count // 2):
             cache.set(keys[i], test_data)
-        
+
         operations = []
         # 70% GET, 20% SET, 10% DELETE
         for _ in range(count):
@@ -153,9 +153,9 @@ class PerformanceTester:
                 operations.append(("set", random.choice(keys), test_data))
             else:  # DELETE
                 operations.append(("delete", random.choice(keys)))
-        
+
         times = {"get": [], "set": [], "delete": []}
-        
+
         for op in operations:
             if op[0] == "get":
                 duration, _ = self.measure_operation(cache.get, op[1])
@@ -166,7 +166,7 @@ class PerformanceTester:
             else:  # delete
                 duration, _ = self.measure_operation(cache.delete, op[1])
                 times["delete"].append(duration)
-        
+
         results = {}
         for op_type, time_list in times.items():
             if time_list:
@@ -175,13 +175,13 @@ class PerformanceTester:
                     "ops_per_sec": 1_000_000 / statistics.mean(time_list),
                     "count": len(time_list),
                 }
-        
+
         return results
-    
+
     def run_concurrent_test(self, cache_factory, data_size: int, thread_count: int, ops_per_thread: int) -> Dict[str, float]:
         """Test concurrent performance"""
         test_data = self.generate_test_data(data_size)
-        
+
         def worker_thread(thread_id: int) -> List[float]:
             times = []
             for i in range(ops_per_thread):
@@ -189,19 +189,19 @@ class PerformanceTester:
                 duration, _ = self.measure_operation(cache_factory().set, key, test_data)
                 times.append(duration)
             return times
-        
+
         start_time = time.perf_counter()
-        
+
         with ThreadPoolExecutor(max_workers=thread_count) as executor:
             futures = [executor.submit(worker_thread, i) for i in range(thread_count)]
             all_times = []
             for future in as_completed(futures):
                 all_times.extend(future.result())
-        
+
         end_time = time.perf_counter()
         total_time = end_time - start_time
         total_ops = thread_count * ops_per_thread
-        
+
         return {
             "total_ops": total_ops,
             "total_time": total_time,
@@ -209,31 +209,31 @@ class PerformanceTester:
             "avg_latency": statistics.mean(all_times),
             "p95_latency": statistics.quantiles(all_times, n=20)[18],
         }
-    
+
     def run_cache_size_scaling_test(self, cache, data_size: int) -> Dict[str, Any]:
         """Test performance as cache size grows"""
         test_data = self.generate_test_data(data_size)
         cache_sizes = [100, 500, 1000, 5000, 10000]
         results = {}
-        
+
         for size in cache_sizes:
             # Populate cache to target size
             keys = self.generate_keys(size)
             for key in keys:
                 cache.set(key, test_data)
-            
+
             # Measure performance on additional operations
             test_keys = self.generate_keys(100)
             times = []
             for key in test_keys:
                 duration, _ = self.measure_operation(cache.set, f"new_{key}", test_data)
                 times.append(duration)
-            
+
             results[size] = {
                 "avg_latency": statistics.mean(times),
                 "ops_per_sec": 1_000_000 / statistics.mean(times),
             }
-        
+
         return results
 
     def print_performance_comparison(self, operation: str, data_size_name: str,

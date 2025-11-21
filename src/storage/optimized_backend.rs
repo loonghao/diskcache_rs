@@ -30,6 +30,7 @@ pub struct OptimizedStorage {
     cold_index: Arc<RwLock<DashMap<String, FileInfo>>>, // File metadata
 
     // Performance optimizations
+    #[allow(dead_code)]
     buffer_pool: Arc<BufferPool>,
     write_batcher: Arc<WriteBatcher>,
 
@@ -75,18 +76,22 @@ struct MmapEntry {
 #[derive(Debug, Clone)]
 struct FileInfo {
     path: PathBuf,
+    #[allow(dead_code)]
     size: u64,
+    #[allow(dead_code)]
     created_at: u64,
     compressed: bool,
 }
 
 /// Buffer pool for reusing allocations
+#[allow(dead_code)]
 struct BufferPool {
     small_buffers: Arc<RwLock<VecDeque<BytesMut>>>, // < 4KB
     medium_buffers: Arc<RwLock<VecDeque<BytesMut>>>, // 4KB - 64KB
     large_buffers: Arc<RwLock<VecDeque<BytesMut>>>, // > 64KB
 }
 
+#[allow(dead_code)]
 impl BufferPool {
     fn new() -> Self {
         Self {
@@ -601,6 +606,7 @@ impl OptimizedStorage {
     }
 
     /// Get performance statistics
+    #[allow(dead_code)]
     pub fn stats(&self) -> StorageStatistics {
         StorageStatistics {
             hot_hits: self.stats.hot_hits.load(Ordering::Relaxed),
@@ -617,6 +623,7 @@ impl OptimizedStorage {
     }
 
     /// Batch set operation for better performance
+    #[allow(dead_code)]
     pub fn set_batch(&self, entries: Vec<(String, Vec<u8>)>) -> CacheResult<()> {
         for (key, data) in entries {
             self.set_data(&key, &data)?;
@@ -626,6 +633,7 @@ impl OptimizedStorage {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct StorageStatistics {
     pub hot_hits: u64,
     pub warm_hits: u64,
