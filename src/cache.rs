@@ -400,14 +400,28 @@ pub struct PyCache {
 #[pymethods]
 impl PyCache {
     #[new]
-    #[pyo3(signature = (directory, max_size=None, max_entries=None))]
-    fn new(directory: String, max_size: Option<u64>, max_entries: Option<u64>) -> PyResult<Self> {
+    #[pyo3(signature = (directory, max_size=None, max_entries=None, disk_write_threshold=None, use_file_locking=None))]
+    fn new(
+        directory: String,
+        max_size: Option<u64>,
+        max_entries: Option<u64>,
+        disk_write_threshold: Option<usize>,
+        use_file_locking: Option<bool>,
+    ) -> PyResult<Self> {
         let mut config = CacheConfig {
             directory: PathBuf::from(directory),
             ..Default::default()
         };
         config.max_size = max_size;
         config.max_entries = max_entries;
+
+        // Apply new configuration options if provided
+        if let Some(threshold) = disk_write_threshold {
+            config.disk_write_threshold = threshold;
+        }
+        if let Some(locking) = use_file_locking {
+            config.use_file_locking = locking;
+        }
 
         let cache = DiskCache::new(config)?;
         Ok(Self { cache })
