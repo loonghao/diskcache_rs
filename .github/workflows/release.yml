@@ -1,44 +1,75 @@
 name: Release
 
+# This workflow handles both release-please automation and publishing
+# It creates releases when changes are pushed to main, and publishes to PyPI
+
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
       - 'diskcache_rs-v*'  # Support release-please tag format
   workflow_dispatch:
-  workflow_call:
 
 permissions:
   contents: write  # Required for creating releases and uploading artifacts
+  pull-requests: write  # Required for release-please
+  issues: write  # Required for release-please
   id-token: write  # Required for PyPI trusted publishing
   attestations: write  # Required for artifact attestation
 
 jobs:
-  # Call the build workflow to build standard wheels
+  # First job: Run release-please to create releases and tags
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      releases_created: ${{ steps.release.outputs.releases_created }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+  # Call the build workflow to build standard wheels (only if release was created)
   build:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
     uses: ./.github/workflows/build.yml
     permissions:
       contents: read
       actions: write  # Required for uploading artifacts
+      id-token: write  # Required for artifact attestation
 
-  # Call the ABI3 build workflow to build universal wheels
+  # Call the ABI3 build workflow to build universal wheels (only if release was created)
   build-abi3:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
     uses: ./.github/workflows/build-abi3.yml
     permissions:
       contents: read
       actions: write  # Required for uploading artifacts
+      id-token: write  # Required for artifact attestation
 
-  # Call the CI workflow to run tests
+  # Call the CI workflow to run tests (only if release was created)
   test:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
 
-  # Publish to PyPI
-  release:
+  # Publish to PyPI - only depends on builds, not tests (tests should pass in PR)
+  pypi-publish:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [build, build-abi3, test]
+    needs: [build, build-abi3]
+    environment:
+      name: pypi
+      url: https://pypi.org/p/diskcache_rs
     permissions:
       # IMPORTANT: this permission is mandatory for trusted publishing
       id-token: write
@@ -46,9 +77,7 @@ jobs:
       contents: write
       # Used to generate artifact attestation
       attestations: write
-    environment:
-      name: pypi
-      url: https://pypi.org/p/diskcache_rs
+
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v6
@@ -69,19 +98,24 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: dist/
+          packages-dir: dist
+          verbose: true
+          print-hash: true
+          skip-existing: true  # Skip files that already exist on PyPI
 
   # Create GitHub Release
   github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [release]
+    needs: [release-please, pypi-publish]
+    if: ${{ needs.release-please.outputs.release_created }}
     permissions:
       contents: write  # Required for creating releases
       actions: read    # Required for downloading artifacts
       attestations: write  # Required for artifact attestation
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -90,17 +124,21 @@ jobs:
         uses: jaywcjlove/changelog-generator@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          filter-author: (loonghao|renovate\[bot\]|dependabot\[bot\]|Renovate Bot)
-          filter: '[R|r]elease[d]\s+[v|V]\d(\.\d+){0,2}'
+          filter-author: (loonghao|renovate\\[bot\\]|dependabot\\[bot\\]|Renovate Bot)
+          filter: ''
           template: |
             ## Bugs
             {{fix}}
+
             ## Feature
             {{feat}}
+
             ## Improve
             {{refactor,perf,clean}}
+
             ## Misc
-            {{chore,style,ci}} 🔧 Nothing change}}
+            {{chore,style,ci,build||🔧 Nothing changed}}
+
             ## Unknown
             {{__unknown__}}
 
@@ -110,11 +148,19 @@ jobs:
           path: release-artifacts
           merge-multiple: true
 
-      - uses: ncipollo/release-action@v1
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
         with:
           artifacts: "release-artifacts/*"
           token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ needs.release-please.outputs.tag_name }}
+          name: ${{ needs.release-please.outputs.tag_name }}
           body: |
             Comparing Changes: ${{ steps.changelog.outputs.compareurl }}
 
             ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+          allowUpdates: true
+          skipIfReleaseExists: false
+          updateOnlyUnreleased: false
