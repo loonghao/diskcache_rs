@@ -1,3 +1,9 @@
+## v0.3.1 (2025-11-21)
+
+### Fix
+
+- **deps**: update rust crate lz4_flex to 0.12
+
 ## v0.3.0 (2025-11-21)
 
 ### Feat
