@@ -113,5 +113,3 @@ jobs:
             } catch (error) {
               console.error('Failed to post benchmark results:', error);
             }
-
-

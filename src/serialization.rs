@@ -6,6 +6,7 @@ pub struct OptimizedSerializer;
 
 impl OptimizedSerializer {
     /// Encode data using MessagePack with smart compression
+    #[allow(dead_code)]
     pub fn encode_data<T: Serialize>(value: &T) -> CacheResult<Vec<u8>> {
         // Use MessagePack for optimal performance
         let msgpack_bytes =
@@ -25,6 +26,7 @@ impl OptimizedSerializer {
     }
 
     /// Decode data with automatic compression detection
+    #[allow(dead_code)]
     pub fn decode_data<T: for<'de> Deserialize<'de>>(data: &[u8]) -> CacheResult<T> {
         // Try LZ4 decompression first if data is large enough
         let msgpack_bytes = if data.len() > 4 {

@@ -63,4 +63,3 @@ runs:
           htmlcov/
           test-results/
         retention-days: 7
-

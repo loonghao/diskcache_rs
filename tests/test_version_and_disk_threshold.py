@@ -339,4 +339,3 @@ class TestDiskFileVisibility:
 
         finally:
             shutil.rmtree(cache_dir, ignore_errors=True)
-
