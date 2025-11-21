@@ -509,12 +509,18 @@ impl RustCache {
 
         // Parse kwargs for compatibility with diskcache.Cache
         if let Some(kwargs) = kwargs {
+            // Support both size_limit (diskcache) and max_size (new API)
             if let Ok(Some(size_limit)) = kwargs.get_item("size_limit") {
                 config.max_size = size_limit.extract::<Option<u64>>()?;
+            } else if let Ok(Some(max_size)) = kwargs.get_item("max_size") {
+                config.max_size = max_size.extract::<Option<u64>>()?;
             }
 
+            // Support both count_limit (diskcache) and max_entries (new API)
             if let Ok(Some(count_limit)) = kwargs.get_item("count_limit") {
                 config.max_entries = count_limit.extract::<Option<u64>>()?;
+            } else if let Ok(Some(max_entries)) = kwargs.get_item("max_entries") {
+                config.max_entries = max_entries.extract::<Option<u64>>()?;
             }
 
             // New configuration options for issue #17
