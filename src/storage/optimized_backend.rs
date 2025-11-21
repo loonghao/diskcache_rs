@@ -563,13 +563,13 @@ impl OptimizedStorage {
         self.hot_cache.remove(key);
         self.warm_cache.remove(key);
 
-        if data_size < 4096 {
-            // Small data: store in hot cache only
+        if data_size < 256 {
+            // Small data: store in hot cache only (< 256 bytes)
             self.hot_cache
                 .insert(key.to_string(), Bytes::copy_from_slice(data));
             self.cleanup_hot_cache();
         } else {
-            // Large data: compress and store to disk
+            // Large data: compress and store to disk (>= 256 bytes)
             let (compressed_data, is_compressed) = self.compress_if_beneficial(data);
             let file_path = self.build_file_path(key);
 

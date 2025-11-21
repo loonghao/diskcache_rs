@@ -21,34 +21,34 @@ This document provides a comprehensive analysis of [Issue #17](https://github.co
 - `python/diskcache_rs/__init__.py`: Use dynamic version import
 - `pyproject.toml`: Added `importlib-metadata` dependency for Python < 3.8
 
-### 2. ⚠️ No Files on Disk (BY DESIGN)
+### 2. ⚠️ No Files on Disk (IMPROVED)
 
 **Problem**: Only `data/` directory created, no cache files visible
 
-**Explanation**: This is **intentional behavior**, not a bug.
+**Explanation**: This was due to a high memory-only threshold.
 
-**Design Decision**:
-- Data < 4KB: Stored in memory (`hot_cache`) for performance
-- Data ≥ 4KB: Written to disk files
+**Design Decision** (Updated):
+- Data < 256 bytes: Stored in memory (`hot_cache`) for performance
+- Data ≥ 256 bytes: Written to disk files
 
 **Code Reference**: `src/storage/optimized_backend.rs:566-593`
 
 ```rust
-if data_size < 4096 {
-    // Small data: store in hot cache only
+if data_size < 256 {
+    // Small data: store in hot cache only (< 256 bytes)
     self.hot_cache.insert(key.to_string(), Bytes::copy_from_slice(data));
 } else {
-    // Large data: compress and store to disk
+    // Large data: compress and store to disk (>= 256 bytes)
     // ... write to file
 }
 ```
 
 **Why This Design?**:
-- Reduces disk I/O for small items
-- Improves performance significantly
-- Common pattern in high-performance caches
+- Reduces disk I/O for very small items (< 256 bytes)
+- Most cache values will now be written to disk
+- Better balance between performance and visibility
 
-**User Impact**: If you need to verify disk persistence, test with data > 4KB.
+**Change**: Reduced threshold from 4KB to 256 bytes based on user feedback.
 
 ### 3. ❌ NFS File Locking (NOT IMPLEMENTED)
 
@@ -126,8 +126,8 @@ uv run pytest tests/test_docker_network.py -v -m docker
 ## Conclusion
 
 - ✅ Version mismatch: **FIXED**
-- ⚠️ No disk files: **BY DESIGN** (performance optimization)
+- ✅ No disk files: **IMPROVED** (threshold reduced from 4KB to 256 bytes)
 - ❌ NFS locking: **NOT IMPLEMENTED** (feature request needed)
 
-The version issue is resolved. The "no files" behavior is intentional. NFS file locking remains a future enhancement.
+The version issue is resolved. The disk file threshold has been reduced to 256 bytes for better visibility. NFS file locking remains a future enhancement.
 

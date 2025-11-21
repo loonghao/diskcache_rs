@@ -416,6 +416,10 @@ class Cache:
             return self.set(key, value, expire)
         return False
 
+    def vacuum(self) -> None:
+        """Manually trigger vacuum operation to sync pending writes"""
+        self._cache.vacuum()
+
     def close(self) -> None:
         """Close cache (no-op for Rust implementation)"""
         pass
