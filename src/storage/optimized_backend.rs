@@ -145,7 +145,7 @@ struct WriteBatcher {
 enum WriteOp {
     Write { path: PathBuf, data: Bytes },
     Delete { path: PathBuf },
-    Sync,
+    Sync { done: mpsc::SyncSender<()> },
 }
 
 impl WriteBatcher {
@@ -168,11 +168,13 @@ impl WriteBatcher {
                     WriteOp::Delete { path } => {
                         let _ = std::fs::remove_file(&path);
                     }
-                    WriteOp::Sync => {
+                    WriteOp::Sync { done } => {
                         Self::flush_batch(&mut batch, &mut writer_map);
                         for writer in writer_map.values_mut() {
                             let _ = writer.flush();
                         }
+                        // Signal completion
+                        let _ = done.send(());
                     }
                 }
             }
@@ -211,7 +213,10 @@ impl WriteBatcher {
     }
 
     fn sync(&self) {
-        let _ = self.sender.send(WriteOp::Sync);
+        let (done_tx, done_rx) = mpsc::sync_channel(1);
+        let _ = self.sender.send(WriteOp::Sync { done: done_tx });
+        // Wait for sync to complete
+        let _ = done_rx.recv();
     }
 }
 
