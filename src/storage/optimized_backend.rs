@@ -614,7 +614,7 @@ impl OptimizedStorage {
 
     /// Write data to file with exclusive lock (for NFS scenarios)
     fn write_with_lock(&self, file_path: &Path, data: &[u8]) -> CacheResult<()> {
-        use fs4::FileExt;
+        use fs4::fs_std::FileExt;
 
         // Create parent directory if it doesn't exist
         if let Some(parent) = file_path.parent() {
