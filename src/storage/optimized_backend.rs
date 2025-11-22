@@ -405,9 +405,112 @@ impl OptimizedStorage {
     /// Close the redb database explicitly
     /// This releases the file lock and allows other processes to open the database
     pub fn close_db(&self) {
+        // Flush all in-memory data to disk before closing
+        if let Err(e) = self.flush_memory_caches() {
+            tracing::error!("Failed to flush memory caches during close: {}", e);
+        }
+
         let mut db_guard = self.index_db.write();
         *db_guard = None;
         tracing::debug!("Closed redb database");
+    }
+
+    /// Flush all in-memory caches (hot_cache and warm_cache) to disk
+    /// This ensures data persistence when closing the cache
+    fn flush_memory_caches(&self) -> CacheResult<()> {
+        let db_guard = self.index_db.read();
+        let db = match db_guard.as_ref() {
+            Some(db) => db,
+            None => return Ok(()), // Database already closed
+        };
+
+        // Collect all entries from hot_cache and warm_cache
+        let mut entries_to_persist = Vec::new();
+
+        // Collect from hot_cache
+        for entry in self.hot_cache.iter() {
+            let key = entry.key().clone();
+            let data = entry.value().clone();
+            entries_to_persist.push((key, data));
+        }
+
+        // Collect from warm_cache (convert MmapEntry to Bytes)
+        for entry in self.warm_cache.iter() {
+            let key = entry.key().clone();
+            let mmap_entry = entry.value();
+            let data = Bytes::copy_from_slice(&mmap_entry.mmap[..mmap_entry.size]);
+            entries_to_persist.push((key, data));
+        }
+
+        if entries_to_persist.is_empty() {
+            return Ok(());
+        }
+
+        tracing::debug!(
+            "Flushing {} entries from memory caches to disk",
+            entries_to_persist.len()
+        );
+
+        // Write all entries to redb in a single transaction
+        let write_txn = db.begin_write().map_err(|e| {
+            CacheError::Io(std::io::Error::other(format!(
+                "Failed to begin redb write transaction: {}",
+                e
+            )))
+        })?;
+
+        {
+            let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
+                CacheError::Io(std::io::Error::other(format!(
+                    "Failed to open redb table: {}",
+                    e
+                )))
+            })?;
+
+            for (key, data) in entries_to_persist {
+                // Create a FileInfo for in-memory data
+                // We'll store the data inline in the FileInfo structure
+                let file_info = FileInfo {
+                    path: PathBuf::from(format!("memory://{}", key)),
+                    size: data.len() as u64,
+                    created_at: Self::get_current_timestamp(),
+                    compressed: false,
+                };
+
+                // Serialize FileInfo + data together
+                let mut value_bytes =
+                    bincode::encode_to_vec(&file_info, bincode::config::standard()).map_err(
+                        |e| {
+                            CacheError::Io(std::io::Error::other(format!(
+                                "Failed to serialize FileInfo: {}",
+                                e
+                            )))
+                        },
+                    )?;
+
+                // Append the actual data after FileInfo
+                value_bytes.extend_from_slice(&data);
+
+                table
+                    .insert(key.as_str(), value_bytes.as_slice())
+                    .map_err(|e| {
+                        CacheError::Io(std::io::Error::other(format!(
+                            "Failed to insert into redb: {}",
+                            e
+                        )))
+                    })?;
+            }
+        }
+
+        write_txn.commit().map_err(|e| {
+            CacheError::Io(std::io::Error::other(format!(
+                "Failed to commit redb transaction: {}",
+                e
+            )))
+        })?;
+
+        tracing::debug!("Successfully flushed memory caches to disk");
+        Ok(())
     }
 
     /// Persist the cold index to redb database with ACID guarantees
@@ -628,6 +731,52 @@ impl StorageBackend for OptimizedStorage {
                 }
             }
         } else {
+            // Level 4: Check redb for persisted memory data
+            let db_guard = self.index_db.read();
+            if let Some(db) = db_guard.as_ref() {
+                if let Ok(read_txn) = db.begin_read() {
+                    if let Ok(table) = read_txn.open_table(INDEX_TABLE) {
+                        if let Ok(Some(value)) = table.get(key) {
+                            let value_bytes = value.value();
+
+                            // Try to deserialize FileInfo
+                            if let Ok((file_info, _)) = bincode::decode_from_slice::<FileInfo, _>(
+                                value_bytes,
+                                bincode::config::standard(),
+                            ) {
+                                // Check if this is memory-persisted data (path starts with "memory://")
+                                if file_info.path.to_string_lossy().starts_with("memory://") {
+                                    // Calculate FileInfo size to extract the actual data
+                                    let file_info_size = bincode::encode_to_vec(
+                                        &file_info,
+                                        bincode::config::standard(),
+                                    )
+                                    .map(|v| v.len())
+                                    .unwrap_or(0);
+
+                                    if value_bytes.len() > file_info_size {
+                                        let data = &value_bytes[file_info_size..];
+                                        self.stats.record_read(data.len() as u64);
+
+                                        // Restore to hot cache
+                                        self.hot_cache
+                                            .insert(key.to_string(), Bytes::copy_from_slice(data));
+
+                                        let entry = CacheEntry::new_inline(
+                                            key.to_string(),
+                                            data.to_vec(),
+                                            vec![],
+                                            None,
+                                        );
+                                        return Ok(Some(entry));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             self.stats.record_miss();
             Ok(None)
         }
