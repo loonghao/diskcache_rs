@@ -22,7 +22,7 @@ jobs:
         python-version: ["3.8", "3.10", "3.12"]  # Test min, stable, and recent
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup DiskCache RS Environment
         uses: ./.github/actions/setup-diskcache-rs
@@ -48,7 +48,7 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup DiskCache RS Environment
         uses: ./.github/actions/setup-diskcache-rs
@@ -68,7 +68,7 @@ jobs:
     name: Code Quality
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup DiskCache RS Environment
         uses: ./.github/actions/setup-diskcache-rs
