@@ -1,3 +1,23 @@
+## v0.4.0 (2025-11-22)
+
+### Feat
+
+- migrate from JSON to redb for persistent index storage
+- add configurable disk write threshold and NFS file locking support
+
+### Fix
+
+- replace std::io::Error::new with std::io::Error::other for clippy
+- ensure cache is closed before checking redb file in tests
+- persist cache index to disk to prevent data loss on restart
+- add disk_write_threshold and use_file_locking support to PyCache
+- support both old and new parameter names in RustCache
+- correct fs4 FileExt import path
+
+### Perf
+
+- auto-persist index every 100 writes and on drop
+
 ## v0.3.1 (2025-11-21)
 
 ### Fix
