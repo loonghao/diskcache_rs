@@ -28,15 +28,18 @@ def test_disk_write_threshold_default():
         large_data = b"y" * 2048  # 2KB
         cache.set("large_key", large_data)
 
+        # Verify data can be retrieved
+        assert cache.get("small_key") == small_data
+        assert cache.get("large_key") == large_data
+
+        # Close cache to ensure data is persisted
+        cache.close()
+
         # With redb backend, data is stored in index.redb file
         # Check that redb database was created
         redb_file = Path(tmpdir) / "index.redb"
         assert redb_file.exists(), "redb database file should exist"
         assert redb_file.stat().st_size > 0, "redb database should not be empty"
-
-        # Verify data can be retrieved
-        assert cache.get("small_key") == small_data
-        assert cache.get("large_key") == large_data
 
 
 def test_disk_write_threshold_custom_zero():
@@ -51,13 +54,16 @@ def test_disk_write_threshold_custom_zero():
         tiny_data = b"x" * 10  # 10 bytes
         cache.set("tiny_key", tiny_data)
 
+        # Verify data can be retrieved
+        assert cache.get("tiny_key") == tiny_data
+
+        # Close cache to ensure data is persisted
+        cache.close()
+
         # With redb backend, data is stored in index.redb file
         redb_file = Path(tmpdir) / "index.redb"
         assert redb_file.exists(), "redb database file should exist"
         assert redb_file.stat().st_size > 0, "redb database should not be empty"
-
-        # Verify data can be retrieved
-        assert cache.get("tiny_key") == tiny_data
 
 
 def test_disk_write_threshold_custom_large():
@@ -76,14 +82,17 @@ def test_disk_write_threshold_custom_large():
         very_large_data = b"y" * (20 * 1024)
         cache.set("very_large_key", very_large_data)
 
+        # Verify data can be retrieved
+        assert cache.get("medium_key") == medium_data
+        assert cache.get("very_large_key") == very_large_data
+
+        # Close cache to ensure data is persisted
+        cache.close()
+
         # With redb backend, data is stored in index.redb file
         redb_file = Path(tmpdir) / "index.redb"
         assert redb_file.exists(), "redb database file should exist"
         assert redb_file.stat().st_size > 0, "redb database should not be empty"
-
-        # Verify data can be retrieved
-        assert cache.get("medium_key") == medium_data
-        assert cache.get("very_large_key") == very_large_data
 
 
 def test_file_locking_enabled():
