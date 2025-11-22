@@ -18,35 +18,8 @@ except ImportError:
     rust_pickle_dumps = None
     rust_pickle_loads = None
 
-# Version is managed by maturin and synced from Cargo.toml
-# Try to import from Rust core first (like auroraview)
-try:
-    from ._diskcache_rs import __version__
-except ImportError:
-    # Fallback to importlib.metadata
-    try:
-        from importlib.metadata import version
-    except ImportError:
-        # Python 3.7 fallback
-        from importlib_metadata import version  # type: ignore
-
-    try:
-        __version__ = version("diskcache_rs")
-    except Exception:
-        # Final fallback: read from Cargo.toml
-        import re
-        from pathlib import Path
-
-        cargo_toml = Path(__file__).parent.parent.parent / "Cargo.toml"
-        if cargo_toml.exists():
-            content = cargo_toml.read_text(encoding="utf-8")
-            match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
-            if match:
-                __version__ = match.group(1)
-            else:
-                __version__ = "0.0.0-dev"
-        else:
-            __version__ = "0.0.0-dev"
+# Version is exported from Rust core module
+from ._diskcache_rs import __version__
 __all__ = [
     "Cache",
     "FanoutCache",
