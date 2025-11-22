@@ -4,6 +4,7 @@ Python-compatible cache interface for diskcache_rs
 
 import functools
 import hashlib
+import json
 import os
 import threading
 import time
@@ -136,6 +137,45 @@ class Cache:
         except Exception:
             return False
 
+    def _auto_deserialize(self, data: bytes) -> Any:
+        """
+        Auto-detect and deserialize data from various formats
+
+        Tries to deserialize in the following order:
+        1. Pickle (most common for diskcache)
+        2. JSON (if data looks like JSON)
+        3. Raw bytes (if all else fails)
+
+        Args:
+            data: Serialized data bytes
+
+        Returns:
+            Deserialized value
+        """
+        # Try pickle first (most common)
+        try:
+            return pickle.loads(data)
+        except Exception:
+            pass
+
+        # Try JSON if it looks like JSON
+        try:
+            # Check if data starts with common JSON markers
+            if data and data[0:1] in (b'{', b'[', b'"'):
+                text = data.decode('utf-8')
+                return json.loads(text)
+        except Exception:
+            pass
+
+        # Try plain text
+        try:
+            return data.decode('utf-8')
+        except Exception:
+            pass
+
+        # Return raw bytes as last resort
+        return data
+
     def get(
         self,
         key: str,
@@ -164,8 +204,8 @@ class Cache:
             if serialized_value is None:
                 return default
 
-            # Deserialize the value
-            value = pickle.loads(serialized_value)
+            # Auto-detect and deserialize the value
+            value = self._auto_deserialize(serialized_value)
 
             # Handle additional return values
             if expire_time or tag:

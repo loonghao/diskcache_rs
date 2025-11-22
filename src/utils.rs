@@ -51,17 +51,19 @@ pub fn validate_key(key: &str) -> CacheResult<()> {
         return Err(CacheError::InvalidConfig("Key cannot be empty".to_string()));
     }
 
-    if key.len() > 250 {
+    // Increased limit since we use hash-based filenames
+    // The actual key can be longer as it's not directly used as filename
+    if key.len() > 4096 {
         return Err(CacheError::InvalidConfig(
-            "Key too long (max 250 characters)".to_string(),
+            "Key too long (max 4096 characters)".to_string(),
         ));
     }
 
-    // Check for invalid characters that might cause filesystem issues
-    let invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'];
-    if key.chars().any(|c| invalid_chars.contains(&c)) {
+    // Only check for null character which is truly invalid in all contexts
+    // Special characters like :, /, etc. are now allowed since we use hash-based filenames
+    if key.contains('\0') {
         return Err(CacheError::InvalidConfig(
-            "Key contains invalid characters".to_string(),
+            "Key contains null character".to_string(),
         ));
     }
 
@@ -278,10 +280,20 @@ mod tests {
 
     #[test]
     fn test_validate_key() {
+        // Valid keys
         assert!(validate_key("valid_key").is_ok());
-        assert!(validate_key("").is_err());
-        assert!(validate_key("key/with/slash").is_err());
-        assert!(validate_key(&"x".repeat(300)).is_err());
+        assert!(validate_key("key/with/slash").is_ok()); // Now allowed
+        assert!(validate_key("key:with:colon").is_ok()); // Now allowed
+        assert!(validate_key("key\\with\\backslash").is_ok()); // Now allowed
+        assert!(validate_key("key.with.dot").is_ok()); // Dot is allowed
+        assert!(validate_key("config.app.settings").is_ok()); // Multiple dots
+        assert!(validate_key("file.name.txt").is_ok()); // File extensions
+        assert!(validate_key("http://example.com/path").is_ok()); // URLs
+
+        // Invalid keys
+        assert!(validate_key("").is_err()); // Empty key
+        assert!(validate_key("key\0with\0null").is_err()); // Null character
+        assert!(validate_key(&"x".repeat(5000)).is_err()); // Too long (>4096)
     }
 
     #[test]
