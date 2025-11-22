@@ -125,24 +125,6 @@ sync-version:
     @echo "🔄 Syncing version between Cargo.toml and pyproject.toml..."
     python scripts/sync_version.py
 
-# Commitizen commands
-commit:
-    @echo "📝 Creating conventional commit..."
-    uvx --from commitizen cz commit
-
-bump:
-    @echo "🚀 Bumping version with commitizen..."
-    uvx --from commitizen cz bump
-
-changelog:
-    @echo "📋 Generating changelog..."
-    uvx --from commitizen cz changelog
-
-# Check version consistency
-check-version:
-    @echo "🔍 Checking version consistency..."
-    uvx --from commitizen cz check --rev-range HEAD~1..HEAD
-
 # Verify stub files are included in wheel
 verify-stubs:
     @echo "🔍 Verifying stub files in wheel..."
