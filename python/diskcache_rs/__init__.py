@@ -28,8 +28,20 @@ except ImportError:
 try:
     __version__ = version("diskcache_rs")
 except PackageNotFoundError:
-    # Development mode fallback
-    __version__ = "0.0.0-dev"
+    # Development mode fallback - read from Cargo.toml
+    import re
+    from pathlib import Path
+
+    cargo_toml = Path(__file__).parent.parent.parent / "Cargo.toml"
+    if cargo_toml.exists():
+        content = cargo_toml.read_text(encoding="utf-8")
+        match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
+        if match:
+            __version__ = match.group(1) + "-dev"
+        else:
+            __version__ = "0.0.0-dev"
+    else:
+        __version__ = "0.0.0-dev"
 __all__ = [
     "Cache",
     "FanoutCache",
