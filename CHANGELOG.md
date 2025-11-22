@@ -1,3 +1,9 @@
+## v0.4.1 (2025-11-22)
+
+### Fix
+
+- sync Cargo.toml version with .cz.toml and update CHANGELOG for v0.4.0
+
 ## v0.4.0 (2025-11-22)
 
 ### Feat
