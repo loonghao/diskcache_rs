@@ -562,6 +562,47 @@ class FanoutCache:
         """Get total cache size across all shards"""
         return sum(cache.volume() for cache in self._caches)
 
+    def add(
+        self,
+        key: str,
+        value: Any,
+        expire: Optional[float] = None,
+        read: bool = False,
+        tag: Optional[str] = None,
+        retry: bool = False,
+    ) -> bool:
+        """Add key to cache only if it doesn't already exist"""
+        return self._get_shard(key).add(key, value, expire, read, tag, retry)
+
+    def incr(
+        self, key: str, delta: int = 1, default: int = 0, retry: bool = False
+    ) -> int:
+        """Increment value for key by delta"""
+        return self._get_shard(key).incr(key, delta, default, retry)
+
+    def decr(
+        self, key: str, delta: int = 1, default: int = 0, retry: bool = False
+    ) -> int:
+        """Decrement value for key by delta"""
+        return self._get_shard(key).decr(key, delta, default, retry)
+
+    def pop(
+        self,
+        key: str,
+        default=None,
+        expire_time: bool = False,
+        tag: bool = False,
+        retry: bool = False,
+    ):
+        """Remove and return value for key"""
+        return self._get_shard(key).pop(key, default, expire_time, tag, retry)
+
+    def touch(
+        self, key: str, expire: Optional[float] = None, retry: bool = False
+    ) -> bool:
+        """Update expiration time for key"""
+        return self._get_shard(key).touch(key, expire, retry)
+
     def close(self) -> None:
         """Close all shard caches"""
         for cache in self._caches:
