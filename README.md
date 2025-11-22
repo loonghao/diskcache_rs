@@ -145,16 +145,13 @@ just --list
 
 ### Release Process
 
-This project uses [Commitizen](https://commitizen-tools.github.io/commitizen/) for automated version management and releases.
+This project uses [Release Please](https://github.com/googleapis/release-please) for automated version management and releases.
 
 #### Making Changes
 
 1. **Use Conventional Commits**: All commits should follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
    ```bash
-   # Use commitizen for guided commit creation
-   just commit
-
-   # Or manually follow the format:
+   # Commit format:
    # feat: add new feature
    # fix: resolve bug
    # docs: update documentation
@@ -163,23 +160,11 @@ This project uses [Commitizen](https://commitizen-tools.github.io/commitizen/) f
 
 2. **Automatic Releases**: When you push to `main`, the CI will:
    - Analyze commit messages since the last release
-   - Automatically bump version in both `Cargo.toml` and `pyproject.toml`
-   - Generate changelog
-   - Create GitHub release
-   - Build and publish wheels to PyPI
-
-#### Manual Release Commands
-
-```bash
-# Check what version would be bumped (dry run)
-just bump --dry-run
-
-# Manually bump version and create changelog
-just bump
-
-# Generate changelog only
-just changelog
-```
+   - Create a release PR with updated version and changelog
+   - When the release PR is merged:
+     - Automatically create a GitHub release with tag
+     - Build and publish wheels to PyPI
+     - Update `Cargo.toml`, `pyproject.toml`, and `CHANGELOG.md`
 
 ## 🔧 Usage Examples
 
