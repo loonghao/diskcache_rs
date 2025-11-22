@@ -295,17 +295,17 @@ impl OptimizedStorage {
         // Use create if file doesn't exist, otherwise open
         let index_db = if index_db_path.exists() {
             Database::open(&index_db_path).map_err(|e| {
-                CacheError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to open redb database: {}", e),
-                ))
+                CacheError::Io(std::io::Error::other(format!(
+                    "Failed to open redb database: {}",
+                    e
+                )))
             })?
         } else {
             Database::create(&index_db_path).map_err(|e| {
-                CacheError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to create redb database: {}", e),
-                ))
+                CacheError::Io(std::io::Error::other(format!(
+                    "Failed to create redb database: {}",
+                    e
+                )))
             })?
         };
 
@@ -338,10 +338,10 @@ impl OptimizedStorage {
         };
 
         let read_txn = db.begin_read().map_err(|e| {
-            CacheError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to begin redb read transaction: {}", e),
-            ))
+            CacheError::Io(std::io::Error::other(format!(
+                "Failed to begin redb read transaction: {}",
+                e
+            )))
         })?;
 
         // Try to open the table (it might not exist on first run)
@@ -359,28 +359,28 @@ impl OptimizedStorage {
 
         // Iterate over all entries in the redb table
         let iter = table.iter().map_err(|e| {
-            CacheError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to iterate redb table: {}", e),
-            ))
+            CacheError::Io(std::io::Error::other(format!(
+                "Failed to iterate redb table: {}",
+                e
+            )))
         })?;
 
         for entry in iter {
             let (key, value) = entry.map_err(|e| {
-                CacheError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to read redb entry: {}", e),
-                ))
+                CacheError::Io(std::io::Error::other(format!(
+                    "Failed to read redb entry: {}",
+                    e
+                )))
             })?;
 
             // Deserialize FileInfo from bytes
             let file_info: FileInfo =
                 bincode::decode_from_slice(value.value(), bincode::config::standard())
                     .map_err(|e| {
-                        CacheError::Io(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to deserialize FileInfo: {}", e),
-                        ))
+                        CacheError::Io(std::io::Error::other(format!(
+                            "Failed to deserialize FileInfo: {}",
+                            e
+                        )))
                     })?
                     .0;
 
@@ -419,18 +419,18 @@ impl OptimizedStorage {
         };
 
         let write_txn = db.begin_write().map_err(|e| {
-            CacheError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to begin redb write transaction: {}", e),
-            ))
+            CacheError::Io(std::io::Error::other(format!(
+                "Failed to begin redb write transaction: {}",
+                e
+            )))
         })?;
 
         {
             let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
-                CacheError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to open redb table: {}", e),
-                ))
+                CacheError::Io(std::io::Error::other(format!(
+                    "Failed to open redb table: {}",
+                    e
+                )))
             })?;
 
             let index = self.cold_index.read();
@@ -443,27 +443,27 @@ impl OptimizedStorage {
                 // Serialize FileInfo to bytes
                 let value_bytes = bincode::encode_to_vec(file_info, bincode::config::standard())
                     .map_err(|e| {
-                        CacheError::Io(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to serialize FileInfo: {}", e),
-                        ))
+                        CacheError::Io(std::io::Error::other(format!(
+                            "Failed to serialize FileInfo: {}",
+                            e
+                        )))
                     })?;
 
                 table.insert(key, value_bytes.as_slice()).map_err(|e| {
-                    CacheError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to insert into redb: {}", e),
-                    ))
+                    CacheError::Io(std::io::Error::other(format!(
+                        "Failed to insert into redb: {}",
+                        e
+                    )))
                 })?;
             }
         }
 
         // Commit transaction (ACID guarantee)
         write_txn.commit().map_err(|e| {
-            CacheError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to commit redb transaction: {}", e),
-            ))
+            CacheError::Io(std::io::Error::other(format!(
+                "Failed to commit redb transaction: {}",
+                e
+            )))
         })?;
 
         Ok(())
@@ -670,33 +670,33 @@ impl StorageBackend for OptimizedStorage {
             let db_guard = self.index_db.read();
             if let Some(db) = db_guard.as_ref() {
                 let write_txn = db.begin_write().map_err(|e| {
-                    CacheError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to begin redb write transaction: {}", e),
-                    ))
+                    CacheError::Io(std::io::Error::other(format!(
+                        "Failed to begin redb write transaction: {}",
+                        e
+                    )))
                 })?;
 
                 {
                     let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
-                        CacheError::Io(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to open redb table: {}", e),
-                        ))
+                        CacheError::Io(std::io::Error::other(format!(
+                            "Failed to open redb table: {}",
+                            e
+                        )))
                     })?;
 
                     table.remove(key).map_err(|e| {
-                        CacheError::Io(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to remove from redb: {}", e),
-                        ))
+                        CacheError::Io(std::io::Error::other(format!(
+                            "Failed to remove from redb: {}",
+                            e
+                        )))
                     })?;
                 }
 
                 write_txn.commit().map_err(|e| {
-                    CacheError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to commit redb transaction: {}", e),
-                    ))
+                    CacheError::Io(std::io::Error::other(format!(
+                        "Failed to commit redb transaction: {}",
+                        e
+                    )))
                 })?;
             }
         }
@@ -750,27 +750,27 @@ impl StorageBackend for OptimizedStorage {
         let db_guard = self.index_db.read();
         if let Some(db) = db_guard.as_ref() {
             let write_txn = db.begin_write().map_err(|e| {
-                CacheError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to begin redb write transaction: {}", e),
-                ))
+                CacheError::Io(std::io::Error::other(format!(
+                    "Failed to begin redb write transaction: {}",
+                    e
+                )))
             })?;
 
             {
                 // Delete the table to clear all entries
                 write_txn.delete_table(INDEX_TABLE).map_err(|e| {
-                    CacheError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to delete redb table: {}", e),
-                    ))
+                    CacheError::Io(std::io::Error::other(format!(
+                        "Failed to delete redb table: {}",
+                        e
+                    )))
                 })?;
             }
 
             write_txn.commit().map_err(|e| {
-                CacheError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to commit redb transaction: {}", e),
-                ))
+                CacheError::Io(std::io::Error::other(format!(
+                    "Failed to commit redb transaction: {}",
+                    e
+                )))
             })?;
         }
 
@@ -858,43 +858,43 @@ impl OptimizedStorage {
             let db_guard = self.index_db.read();
             if let Some(db) = db_guard.as_ref() {
                 let write_txn = db.begin_write().map_err(|e| {
-                    CacheError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to begin redb write transaction: {}", e),
-                    ))
+                    CacheError::Io(std::io::Error::other(format!(
+                        "Failed to begin redb write transaction: {}",
+                        e
+                    )))
                 })?;
 
                 {
                     let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
-                        CacheError::Io(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to open redb table: {}", e),
-                        ))
+                        CacheError::Io(std::io::Error::other(format!(
+                            "Failed to open redb table: {}",
+                            e
+                        )))
                     })?;
 
                     let value_bytes =
                         bincode::encode_to_vec(&file_info, bincode::config::standard()).map_err(
                             |e| {
-                                CacheError::Io(std::io::Error::new(
-                                    std::io::ErrorKind::Other,
-                                    format!("Failed to serialize FileInfo: {}", e),
-                                ))
+                                CacheError::Io(std::io::Error::other(format!(
+                                    "Failed to serialize FileInfo: {}",
+                                    e
+                                )))
                             },
                         )?;
 
                     table.insert(key, value_bytes.as_slice()).map_err(|e| {
-                        CacheError::Io(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to insert into redb: {}", e),
-                        ))
+                        CacheError::Io(std::io::Error::other(format!(
+                            "Failed to insert into redb: {}",
+                            e
+                        )))
                     })?;
                 }
 
                 write_txn.commit().map_err(|e| {
-                    CacheError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to commit redb transaction: {}", e),
-                    ))
+                    CacheError::Io(std::io::Error::other(format!(
+                        "Failed to commit redb transaction: {}",
+                        e
+                    )))
                 })?;
             }
         }
@@ -921,10 +921,10 @@ impl OptimizedStorage {
 
         // Acquire exclusive lock (blocks until lock is available)
         file.lock_exclusive().map_err(|e| {
-            CacheError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to acquire file lock: {}", e),
-            ))
+            CacheError::Io(std::io::Error::other(format!(
+                "Failed to acquire file lock: {}",
+                e
+            )))
         })?;
 
         // Write data using buffered writer for better performance
