@@ -286,6 +286,18 @@ impl DiskCache {
         Ok(())
     }
 
+    /// Close the cache and release resources (especially redb database lock)
+    pub fn close(&self) {
+        // Close the redb database to release file lock
+        if let Some(optimized_storage) =
+            self.storage
+                .as_any()
+                .downcast_ref::<crate::storage::optimized_backend::OptimizedStorage>()
+        {
+            optimized_storage.close_db();
+        }
+    }
+
     /// Check cache limits and evict entries if necessary
     fn enforce_cache_limits(&self) -> CacheResult<()> {
         let current_size = self.size()?;
@@ -490,6 +502,11 @@ impl PyCache {
         Ok(self.cache.vacuum()?)
     }
 
+    fn close(&self) -> PyResult<()> {
+        self.cache.close();
+        Ok(())
+    }
+
     fn stats(&self) -> PyResult<HashMap<String, u64>> {
         let stats = self.cache.stats();
         let mut result = HashMap::new();
@@ -631,6 +648,11 @@ impl RustCache {
 
     fn volume(&self) -> PyResult<u64> {
         Ok(self.cache.size()?)
+    }
+
+    fn close(&self) -> PyResult<()> {
+        self.cache.close();
+        Ok(())
     }
 
     fn __len__(&self) -> PyResult<usize> {

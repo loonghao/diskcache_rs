@@ -18,4 +18,7 @@ pub trait StorageBackend: Send + Sync {
     fn generate_filename(&self, key: &str) -> String;
     fn write_data_file(&self, filename: &str, data: &[u8]) -> CacheResult<()>;
     fn read_data_file(&self, filename: &str) -> CacheResult<Vec<u8>>;
+
+    /// Downcast to Any for accessing concrete type methods
+    fn as_any(&self) -> &dyn std::any::Any;
 }
