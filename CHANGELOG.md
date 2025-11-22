@@ -4,6 +4,18 @@
 
 - sync Cargo.toml version with .cz.toml and update CHANGELOG for v0.4.0
 
+## [0.4.4](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.3...diskcache_rs-v0.4.4) (2025-11-22)
+
+
+### Features
+
+* support special characters in cache keys and auto-deserialization ([e56ad93](https://github.com/loonghao/diskcache_rs/commit/e56ad939b1c95456929d46887441c8d8610f1476))
+
+
+### Bug Fixes
+
+* resolve hashFiles path issue in GitHub Actions for macOS ([08abc64](https://github.com/loonghao/diskcache_rs/commit/08abc6442b2c7208b26038f28be07ab31dbccbe7))
+
 ## [0.4.3](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.2...diskcache_rs-v0.4.3) (2025-11-22)
 
 
