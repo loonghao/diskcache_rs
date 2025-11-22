@@ -347,6 +347,7 @@ class TestCrossPlatformNetwork:
             )
 
         for i, path_format in enumerate(path_formats):
+            cache = None
             try:
                 cache = Cache(path_format)
                 test_key = f"path_format_test_{i}"
@@ -358,3 +359,6 @@ class TestCrossPlatformNetwork:
 
             except Exception as e:
                 pytest.fail(f"Path format {path_format} failed: {e}")
+            finally:
+                if cache is not None:
+                    cache.close()

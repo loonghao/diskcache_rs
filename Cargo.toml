@@ -27,7 +27,7 @@ panic = "abort"
 strip = "symbols"
 
 [dependencies]
-pyo3 = { version = "0.25.0", features = ["extension-module"] }
+pyo3 = { version = "0.27", features = ["extension-module"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 bincode = "2.0"
@@ -41,16 +41,16 @@ rusqlite = { version = "0.37", features = ["bundled", "blob", "chrono"] }
 parking_lot = "0.12"
 dashmap = "6.1"
 lz4_flex = "0.12"
-blake3 = "1.5"
-bytes = "1.8"
+blake3 = "1.8"
+bytes = "1.9"
 memmap2 = "0.9"
-tempfile = "3.8"
+tempfile = "3.17"
 thiserror = "2.0"
 anyhow = "1.0"
 tracing = "0.1"
-serde-pickle = "1.1"
+serde-pickle = "1.2"
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.0", features = ["v4", "serde"] }
+uuid = { version = "1.18", features = ["v4", "serde"] }
 crossbeam = "0.8"
 # Cross-platform file locking for NFS support
 fs4 = "0.13"

@@ -442,6 +442,10 @@ class Cache:
             del self._cache
             self._cache = None
 
+    def __del__(self):
+        """Destructor to ensure resources are released"""
+        self.close()
+
     def __enter__(self):
         """Context manager entry"""
         return self
