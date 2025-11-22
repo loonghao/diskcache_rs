@@ -24,6 +24,15 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+      # Note: cargo-clippy requires Python environment with uv
+      # Run manually with: uv run cargo clippy --all-targets --all-features -- -D warnings
+      # Disabled in pre-commit due to cross-platform compatibility issues
+      # - id: cargo-clippy
+      #   name: cargo clippy
+      #   entry: cargo clippy --all-targets --all-features -- -D warnings
+      #   language: system
+      #   types: [rust]
+      #   pass_filenames: false
 
   # Python formatting and linting with ruff
   - repo: https://github.com/astral-sh/ruff-pre-commit
