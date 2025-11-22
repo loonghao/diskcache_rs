@@ -207,9 +207,13 @@ class TestNetworkFilesystem:
         ]
 
         for path in paths_to_test:
+            cache = None
             try:
                 cache = Cache(path)
                 cache.set("path_test", b"test data")
                 assert cache.get("path_test") == b"test data"
             except Exception as e:
                 pytest.fail(f"Path normalization failed for {path}: {e}")
+            finally:
+                if cache is not None:
+                    cache.close()

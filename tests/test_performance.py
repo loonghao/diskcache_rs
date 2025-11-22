@@ -173,22 +173,25 @@ class TestPerformance:
         for max_size, max_entries in cache_configs:
             cache = Cache(temp_cache_dir, max_size=max_size, max_entries=max_entries)
 
-            # Test with subset of operations
-            test_keys = [f"size_test_{i}" for i in range(100)]
-            test_value = b"x" * 1024  # 1KB value
+            try:
+                # Test with subset of operations
+                test_keys = [f"size_test_{i}" for i in range(100)]
+                test_value = b"x" * 1024  # 1KB value
 
-            start_time = time.perf_counter()
-            for key in test_keys:
-                cache.set(key, test_value)
-            for key in test_keys:
-                cache.get(key)
-            end_time = time.perf_counter()
+                start_time = time.perf_counter()
+                for key in test_keys:
+                    cache.set(key, test_value)
+                for key in test_keys:
+                    cache.get(key)
+                end_time = time.perf_counter()
 
-            operation_time = end_time - start_time
-            results.append((max_size, max_entries, operation_time))
+                operation_time = end_time - start_time
+                results.append((max_size, max_entries, operation_time))
 
-            # Clean up for next test
-            cache.clear()
+                # Clean up for next test
+                cache.clear()
+            finally:
+                cache.close()
 
         # Print results for analysis
         for max_size, max_entries, op_time in results:

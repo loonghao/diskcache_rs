@@ -447,13 +447,13 @@ impl PyCache {
     fn set(
         &self,
         key: &str,
-        value: PyObject,
+        value: Py<PyAny>,
         expire_time: Option<u64>,
         tags: Option<Vec<String>>,
     ) -> PyResult<()> {
         let tags = tags.unwrap_or_default();
         // Convert PyObject to bytes for internal storage
-        let value_bytes = Python::with_gil(|py| {
+        let value_bytes = Python::attach(|py| {
             let bytes = value.extract::<Vec<u8>>(py)?;
             Ok::<Vec<u8>, PyErr>(bytes)
         })?;
@@ -598,7 +598,7 @@ impl RustCache {
     fn set(
         &self,
         key: &str,
-        value: PyObject,
+        value: Py<PyAny>,
         expire: Option<u64>,
         read: Option<bool>,
         tag: Option<String>,
@@ -614,7 +614,7 @@ impl RustCache {
         };
 
         // Convert PyObject to bytes for internal storage
-        let value_bytes = Python::with_gil(|py| {
+        let value_bytes = Python::attach(|py| {
             let bytes = value.extract::<Vec<u8>>(py)?;
             Ok::<Vec<u8>, PyErr>(bytes)
         })?;
@@ -702,7 +702,7 @@ impl RustFanoutCache {
     fn set(
         &self,
         key: &str,
-        value: PyObject,
+        value: Py<PyAny>,
         expire: Option<u64>,
         read: Option<bool>,
         tag: Option<String>,

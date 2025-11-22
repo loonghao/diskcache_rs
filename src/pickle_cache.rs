@@ -105,13 +105,13 @@ impl PickleCache {
     pub fn set_pickle(
         &mut self,
         key: &str,
-        pickled_data: PyObject,
+        pickled_data: Py<PyAny>,
         ttl_seconds: Option<i64>,
     ) -> PyResult<()> {
         let ttl = ttl_seconds.map(Duration::seconds).or(self.default_ttl);
 
         // Convert PyObject to bytes
-        let data_bytes = Python::with_gil(|py| {
+        let data_bytes = Python::attach(|py| {
             let bytes = pickled_data.extract::<Vec<u8>>(py)?;
             Ok::<Vec<u8>, PyErr>(bytes)
         })?;
@@ -360,7 +360,7 @@ impl PickleCache {
 
 /// High-performance pickle serialization using Rust
 #[pyfunction]
-pub fn rust_pickle_dumps(py: Python, obj: PyObject) -> PyResult<PyObject> {
+pub fn rust_pickle_dumps(py: Python, obj: Py<PyAny>) -> PyResult<Py<PyAny>> {
     // Use Python's pickle module for now, but through Rust
     // This provides a foundation for future pure Rust implementation
     let pickle_module = py.import("pickle")?;
@@ -371,7 +371,7 @@ pub fn rust_pickle_dumps(py: Python, obj: PyObject) -> PyResult<PyObject> {
 
 /// High-performance pickle deserialization using Rust
 #[pyfunction]
-pub fn rust_pickle_loads(py: Python, data: PyObject) -> PyResult<PyObject> {
+pub fn rust_pickle_loads(py: Python, data: Py<PyAny>) -> PyResult<Py<PyAny>> {
     // Use Python's pickle module for now, but through Rust
     // This provides a foundation for future pure Rust implementation
     let pickle_module = py.import("pickle")?;

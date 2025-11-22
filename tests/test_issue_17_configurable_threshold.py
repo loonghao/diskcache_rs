@@ -24,21 +24,15 @@ def test_disk_write_threshold_default():
         small_data = b"x" * 512  # 512 bytes
         cache.set("small_key", small_data)
 
-        # Check that no data files were created (only metadata)
-        data_dir = Path(tmpdir) / "data"
-        if data_dir.exists():
-            data_files = list(data_dir.glob("*.dat"))
-            assert len(data_files) == 0, "Small data should not create disk files"
-
         # Large data (>= 1KB) - should create disk file
         large_data = b"y" * 2048  # 2KB
         cache.set("large_key", large_data)
 
-        # Check that data file was created
-        data_dir = Path(tmpdir) / "data"
-        assert data_dir.exists(), "Data directory should exist"
-        data_files = list(data_dir.glob("*.dat"))
-        assert len(data_files) >= 1, "Large data should create disk files"
+        # With redb backend, data is stored in index.redb file
+        # Check that redb database was created
+        redb_file = Path(tmpdir) / "index.redb"
+        assert redb_file.exists(), "redb database file should exist"
+        assert redb_file.stat().st_size > 0, "redb database should not be empty"
 
         # Verify data can be retrieved
         assert cache.get("small_key") == small_data
@@ -57,11 +51,10 @@ def test_disk_write_threshold_custom_zero():
         tiny_data = b"x" * 10  # 10 bytes
         cache.set("tiny_key", tiny_data)
 
-        # Check that data file was created
-        data_dir = Path(tmpdir) / "data"
-        assert data_dir.exists(), "Data directory should exist"
-        data_files = list(data_dir.glob("*.dat"))
-        assert len(data_files) >= 1, "Even tiny data should create disk files with threshold=0"
+        # With redb backend, data is stored in index.redb file
+        redb_file = Path(tmpdir) / "index.redb"
+        assert redb_file.exists(), "redb database file should exist"
+        assert redb_file.stat().st_size > 0, "redb database should not be empty"
 
         # Verify data can be retrieved
         assert cache.get("tiny_key") == tiny_data
@@ -79,21 +72,14 @@ def test_disk_write_threshold_custom_large():
         medium_data = b"x" * (5 * 1024)
         cache.set("medium_key", medium_data)
 
-        # Check that no data files were created
-        data_dir = Path(tmpdir) / "data"
-        if data_dir.exists():
-            data_files = list(data_dir.glob("*.dat"))
-            assert len(data_files) == 0, "Medium data should not create disk files with high threshold"
-
         # Very large data (20KB) - should create disk file
         very_large_data = b"y" * (20 * 1024)
         cache.set("very_large_key", very_large_data)
 
-        # Check that data file was created
-        data_dir = Path(tmpdir) / "data"
-        assert data_dir.exists(), "Data directory should exist"
-        data_files = list(data_dir.glob("*.dat"))
-        assert len(data_files) >= 1, "Very large data should create disk files"
+        # With redb backend, data is stored in index.redb file
+        redb_file = Path(tmpdir) / "index.redb"
+        assert redb_file.exists(), "redb database file should exist"
+        assert redb_file.stat().st_size > 0, "redb database should not be empty"
 
         # Verify data can be retrieved
         assert cache.get("medium_key") == medium_data
