@@ -32,7 +32,7 @@ runs:
       shell: bash
       run: |
         uv run pyo3-stubgen diskcache_rs._diskcache_rs python/diskcache_rs/
-        echo "✅ Type stubs generated successfully"
+        echo "Type stubs generated successfully"
 
     - name: Run basic tests
       if: inputs.test-type == 'basic'
@@ -51,7 +51,7 @@ runs:
     - name: Verify import
       shell: bash
       run: |
-        uv run python -c 'import diskcache_rs; print(f"✅ diskcache_rs v{diskcache_rs.__version__} imported successfully")'
+        uv run python -c 'import diskcache_rs; print(f"diskcache_rs v{diskcache_rs.__version__} imported successfully")'
 
     - name: Upload test artifacts
       if: inputs.upload-artifacts == 'true' && always()
