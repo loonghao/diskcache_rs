@@ -36,7 +36,7 @@ runs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: ${{ runner.os }}-cargo-${{ inputs.cache-key-suffix }}-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-${{ inputs.cache-key-suffix }}-${{ hashFiles('Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-${{ inputs.cache-key-suffix }}-
           ${{ runner.os }}-cargo-
