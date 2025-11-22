@@ -4,7 +4,7 @@
 
 **Question**: Can developers simply change the namespace from `diskcache` to `diskcache_rs` for a drop-in replacement?
 
-**Answer**: ✅ **80% Compatible (v0.4.2+)** - Core and atomic operations fully compatible. Advanced features (memoize, transact, tags, queues) not yet implemented.
+**Answer**: ✅ **~95% Compatible (v0.4.3+)** - Core operations, atomic operations, memoization, transactions, and iteration fully compatible. Only advanced features like tags and queues remain unimplemented.
 
 ---
 
@@ -34,6 +34,13 @@
 | `volume()` | ✅ | ✅ | Compatible |
 | `close()` | ✅ | ✅ | Compatible |
 | `__enter__()` / `__exit__()` | ✅ | ✅ | Context manager support |
+| `memoize(name, typed, expire, tag, ignore)` | ✅ | ✅ | Compatible (v0.4.3+) |
+| `transact(retry)` | ✅ | ✅ | Compatible (v0.4.3+) |
+| `iterkeys(reverse)` | ✅ | ✅ | Compatible (v0.4.3+) |
+| `__reversed__()` | ✅ | ✅ | Compatible (v0.4.3+) |
+| `peekitem(last, expire_time, tag, retry)` | ✅ | ✅ | Compatible (v0.4.3+) |
+| `directory` (property) | ✅ | ✅ | Compatible (v0.4.3+) |
+| `timeout` (property) | ✅ | ✅ | Compatible (v0.4.3+) |
 
 ### ⚠️ Partially Compatible Methods
 
@@ -49,25 +56,18 @@
 
 | Method | diskcache | diskcache_rs | Impact |
 |--------|-----------|--------------|--------|
-| `__reversed__()` | ✅ | ❌ | Low - rarely used |
 | `check(fix, retry)` | ✅ | ❌ | Medium - debugging tool |
 | `create_tag_index()` | ✅ | ❌ | Low - tag feature not supported |
 | `drop_tag_index()` | ✅ | ❌ | Low - tag feature not supported |
 | `cull(retry)` | ✅ | ❌ | Medium - eviction policy |
 | `evict(tag, retry)` | ✅ | ❌ | Low - tag feature not supported |
 | `expire(now, retry)` | ✅ | ❌ | Medium - manual expiration |
-| `iterkeys(reverse)` | ✅ | ❌ | Low - can use `iter()` |
-| `memoize(...)` | ✅ | ❌ | **High** - popular decorator |
 | `peek(prefix, ...)` | ✅ | ❌ | Medium - queue operations |
-| `peekitem(last, ...)` | ✅ | ❌ | Low - rarely used |
 | `pull(prefix, ...)` | ✅ | ❌ | Medium - queue operations |
 | `push(value, prefix, ...)` | ✅ | ❌ | Medium - queue operations |
 | `read(key, retry)` | ✅ | ❌ | Low - file handle feature |
 | `reset(key, value, ...)` | ✅ | ❌ | Low - settings management |
-| `transact(retry)` | ✅ | ❌ | **High** - transaction support |
-| `directory` (property) | ✅ | ❌ | Low - can track manually |
 | `disk` (property) | ✅ | ❌ | Low - internal detail |
-| `timeout` (property) | ✅ | ❌ | Low - can track manually |
 
 ---
 
