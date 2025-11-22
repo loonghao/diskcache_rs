@@ -4,6 +4,26 @@
 
 - sync Cargo.toml version with .cz.toml and update CHANGELOG for v0.4.0
 
+## [0.4.3](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.2...diskcache_rs-v0.4.3) (2025-11-22)
+
+
+### Features
+
+* implement advanced diskcache features (memoize, transact, iterkeys, peekitem) ([e11747d](https://github.com/loonghao/diskcache_rs/commit/e11747d5d6368e4ac96c850bb1ad748c0a87ec4a))
+* improve API compatibility with python-diskcache ([b2b32fc](https://github.com/loonghao/diskcache_rs/commit/b2b32fc2918baa2593a75e7c6158487bfabb3e44))
+
+
+### Bug Fixes
+
+* critical persistence bug and improve version detection ([7de8f23](https://github.com/loonghao/diskcache_rs/commit/7de8f2361f9e6f47bc632dde9c6ab91f0716eb68))
+* improve version fallback to read from Cargo.toml in development mode ([2aa633c](https://github.com/loonghao/diskcache_rs/commit/2aa633c6bd43b80216f2c8758fb21c88fb5ca984))
+* remove emoji characters to fix Windows encoding issue ([59fda00](https://github.com/loonghao/diskcache_rs/commit/59fda00c3c213a2d020eb0210ae7a8fbd782ab76))
+
+
+### Code Refactoring
+
+* simplify version detection logic ([ab60b25](https://github.com/loonghao/diskcache_rs/commit/ab60b250b05f1e3e9ab9fcb730a48805eda4f46f))
+
 ## [0.4.2](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.1...diskcache_rs-v0.4.2) (2025-11-22)
 
 
