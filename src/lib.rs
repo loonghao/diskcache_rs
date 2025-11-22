@@ -18,6 +18,9 @@ pub use migration::{detect_diskcache_format, DiskCacheMigrator, MigrationStats};
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _diskcache_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Add version from Cargo.toml
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+
     // Add the main cache class
     m.add_class::<cache::PyCache>()?;
 

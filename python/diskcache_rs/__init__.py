@@ -19,29 +19,34 @@ except ImportError:
     rust_pickle_loads = None
 
 # Version is managed by maturin and synced from Cargo.toml
+# Try to import from Rust core first (like auroraview)
 try:
-    from importlib.metadata import version, PackageNotFoundError
+    from ._diskcache_rs import __version__
 except ImportError:
-    # Python 3.7 fallback
-    from importlib_metadata import version, PackageNotFoundError  # type: ignore
+    # Fallback to importlib.metadata
+    try:
+        from importlib.metadata import version
+    except ImportError:
+        # Python 3.7 fallback
+        from importlib_metadata import version  # type: ignore
 
-try:
-    __version__ = version("diskcache_rs")
-except PackageNotFoundError:
-    # Development mode fallback - read from Cargo.toml
-    import re
-    from pathlib import Path
+    try:
+        __version__ = version("diskcache_rs")
+    except Exception:
+        # Final fallback: read from Cargo.toml
+        import re
+        from pathlib import Path
 
-    cargo_toml = Path(__file__).parent.parent.parent / "Cargo.toml"
-    if cargo_toml.exists():
-        content = cargo_toml.read_text(encoding="utf-8")
-        match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
-        if match:
-            __version__ = match.group(1) + "-dev"
+        cargo_toml = Path(__file__).parent.parent.parent / "Cargo.toml"
+        if cargo_toml.exists():
+            content = cargo_toml.read_text(encoding="utf-8")
+            match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
+            if match:
+                __version__ = match.group(1)
+            else:
+                __version__ = "0.0.0-dev"
         else:
             __version__ = "0.0.0-dev"
-    else:
-        __version__ = "0.0.0-dev"
 __all__ = [
     "Cache",
     "FanoutCache",
