@@ -672,6 +672,13 @@ impl OptimizedStorage {
                 // Async write for better performance
                 self.write_batcher.write_async(file_path, compressed_data);
             }
+
+            // Auto-persist index every 100 writes to prevent data loss
+            static WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
+            if WRITE_COUNTER.fetch_add(1, Ordering::Relaxed) % 100 == 0 {
+                // Persist in background to avoid blocking
+                let _ = self.persist_index();
+            }
         }
 
         Ok(())
@@ -738,6 +745,13 @@ impl OptimizedStorage {
             self.set_data(&key, &data)?;
         }
         Ok(())
+    }
+}
+
+impl Drop for OptimizedStorage {
+    fn drop(&mut self) {
+        // Ensure index is persisted when storage is dropped
+        let _ = self.persist_index();
     }
 }
 
