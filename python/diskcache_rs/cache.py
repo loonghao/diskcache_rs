@@ -436,8 +436,11 @@ class Cache:
         self._cache.vacuum()
 
     def close(self) -> None:
-        """Close cache (no-op for Rust implementation)"""
-        pass
+        """Close cache and release resources (especially redb database lock)"""
+        if hasattr(self, "_cache") and self._cache is not None:
+            self._cache.close()
+            del self._cache
+            self._cache = None
 
     def __enter__(self):
         """Context manager entry"""

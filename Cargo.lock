@@ -253,6 +253,7 @@ dependencies = [
  "parking_lot",
  "postcard",
  "pyo3",
+ "redb",
  "rmp-serde",
  "rusqlite",
  "serde",
@@ -729,6 +730,15 @@ name = "r-efi"
 version = "5.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+
+[[package]]
+name = "redb"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae323eb086579a3769daa2c753bb96deb95993c534711e0dbe881b5192906a06"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "redox_syscall"

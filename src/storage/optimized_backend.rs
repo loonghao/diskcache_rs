@@ -5,15 +5,19 @@ use bytes::{Bytes, BytesMut};
 use dashmap::DashMap;
 use memmap2::{Mmap, MmapOptions};
 use parking_lot::RwLock;
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
-use std::io::{BufWriter, Read, Write};
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+// Define redb table for cache index
+const INDEX_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("cache_index");
 
 /// High-performance optimized storage backend with multiple performance enhancements:
 /// - Memory-mapped files for large data
@@ -22,13 +26,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// - Object pooling for buffer reuse
 /// - Adaptive compression
 /// - Fine-grained locking
+/// - Persistent index using redb for ACID guarantees
 pub struct OptimizedStorage {
     directory: PathBuf,
 
     // Multi-tier storage
     hot_cache: Arc<DashMap<String, Bytes>>, // Frequently accessed data
     warm_cache: Arc<DashMap<String, MmapEntry>>, // Memory-mapped files
-    cold_index: Arc<RwLock<DashMap<String, FileInfo>>>, // File metadata
+    cold_index: Arc<RwLock<DashMap<String, FileInfo>>>, // File metadata (in-memory cache)
+
+    // Persistent index database (Option to allow explicit closing)
+    index_db: Arc<RwLock<Option<Database>>>, // redb database for persistent index
 
     // Performance optimizations
     #[allow(dead_code)]
@@ -78,7 +86,7 @@ struct MmapEntry {
     last_accessed: AtomicU64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
 struct FileInfo {
     path: PathBuf,
     #[allow(dead_code)]
@@ -281,6 +289,26 @@ impl OptimizedStorage {
         let data_dir = directory.join("data");
         std::fs::create_dir_all(&data_dir).map_err(CacheError::Io)?;
 
+        // Initialize redb database for persistent index
+        let index_db_path = directory.join("index.redb");
+
+        // Use create if file doesn't exist, otherwise open
+        let index_db = if index_db_path.exists() {
+            Database::open(&index_db_path).map_err(|e| {
+                CacheError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to open redb database: {}", e),
+                ))
+            })?
+        } else {
+            Database::create(&index_db_path).map_err(|e| {
+                CacheError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to create redb database: {}", e),
+                ))
+            })?
+        };
+
         let write_batcher = Arc::new(WriteBatcher::new(data_dir.clone(), config.batch_size));
 
         let mut storage = Self {
@@ -288,71 +316,156 @@ impl OptimizedStorage {
             hot_cache: Arc::new(DashMap::with_capacity(config.hot_cache_size)),
             warm_cache: Arc::new(DashMap::with_capacity(config.warm_cache_size)),
             cold_index: Arc::new(RwLock::new(DashMap::new())),
+            index_db: Arc::new(RwLock::new(Some(index_db))),
             buffer_pool: Arc::new(BufferPool::new()),
             write_batcher,
             config,
             stats: Arc::new(StorageStats::default()),
         };
 
-        // Scan existing files to rebuild the cold index
+        // Load existing index from redb
         storage.rebuild_index_from_disk()?;
 
         Ok(storage)
     }
 
-    /// Rebuild the cold index by scanning existing files on disk
+    /// Rebuild the cold index by loading from redb database
     fn rebuild_index_from_disk(&mut self) -> CacheResult<()> {
-        // Try to load index from persistent index file first
-        let index_path = self.directory.join("index.json");
-        if index_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&index_path) {
-                if let Ok(persisted_index) =
-                    serde_json::from_str::<std::collections::HashMap<String, FileInfo>>(&content)
-                {
-                    let mut index = self.cold_index.write();
-                    for (key, file_info) in persisted_index {
-                        // Verify file still exists
-                        if file_info.path.exists() {
-                            index.insert(key, file_info);
-                        }
-                    }
-                    return Ok(());
-                }
+        let db_guard = self.index_db.read();
+        let db = match db_guard.as_ref() {
+            Some(db) => db,
+            None => return Ok(()), // Database is closed
+        };
+
+        let read_txn = db.begin_read().map_err(|e| {
+            CacheError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to begin redb read transaction: {}", e),
+            ))
+        })?;
+
+        // Try to open the table (it might not exist on first run)
+        let table = match read_txn.open_table(INDEX_TABLE) {
+            Ok(table) => table,
+            Err(_) => {
+                // Table doesn't exist yet, this is a new database
+                return Ok(());
+            }
+        };
+
+        let index = self.cold_index.write();
+        let mut loaded_count = 0;
+        let mut skipped_count = 0;
+
+        // Iterate over all entries in the redb table
+        let iter = table.iter().map_err(|e| {
+            CacheError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to iterate redb table: {}", e),
+            ))
+        })?;
+
+        for entry in iter {
+            let (key, value) = entry.map_err(|e| {
+                CacheError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to read redb entry: {}", e),
+                ))
+            })?;
+
+            // Deserialize FileInfo from bytes
+            let file_info: FileInfo =
+                bincode::decode_from_slice(value.value(), bincode::config::standard())
+                    .map_err(|e| {
+                        CacheError::Io(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to deserialize FileInfo: {}", e),
+                        ))
+                    })?
+                    .0;
+
+            // Verify file still exists before adding to index
+            if file_info.path.exists() {
+                index.insert(key.value().to_string(), file_info);
+                loaded_count += 1;
+            } else {
+                skipped_count += 1;
             }
         }
 
-        // Fallback: scan data directory (less efficient, but works for recovery)
-        let data_dir = self.directory.join("data");
-        if !data_dir.exists() {
-            return Ok(());
-        }
-
-        // Note: Without the index file, we can't recover the original keys
-        // because we use blake3 hash for filenames. This is a known limitation.
-        // Users should call vacuum() periodically to persist the index.
+        tracing::debug!(
+            "Loaded {} entries from redb index, skipped {} missing files",
+            loaded_count,
+            skipped_count
+        );
 
         Ok(())
     }
 
-    /// Persist the cold index to disk for recovery after restart
+    /// Close the redb database explicitly
+    /// This releases the file lock and allows other processes to open the database
+    pub fn close_db(&self) {
+        let mut db_guard = self.index_db.write();
+        *db_guard = None;
+        tracing::debug!("Closed redb database");
+    }
+
+    /// Persist the cold index to redb database with ACID guarantees
     fn persist_index(&self) -> CacheResult<()> {
-        let index_path = self.directory.join("index.json");
-        let index = self.cold_index.read();
+        let db_guard = self.index_db.read();
+        let db = match db_guard.as_ref() {
+            Some(db) => db,
+            None => return Ok(()), // Database is closed
+        };
 
-        // Convert DashMap to HashMap for serialization
-        let index_map: std::collections::HashMap<String, FileInfo> = index
-            .iter()
-            .map(|entry| (entry.key().clone(), entry.value().clone()))
-            .collect();
-
-        let json = serde_json::to_string_pretty(&index_map).map_err(|e| {
+        let write_txn = db.begin_write().map_err(|e| {
             CacheError::Io(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                format!("Failed to serialize index: {}", e),
+                format!("Failed to begin redb write transaction: {}", e),
             ))
         })?;
 
-        std::fs::write(&index_path, json).map_err(CacheError::Io)?;
+        {
+            let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
+                CacheError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to open redb table: {}", e),
+                ))
+            })?;
+
+            let index = self.cold_index.read();
+
+            // Write all entries to redb
+            for entry in index.iter() {
+                let key = entry.key().as_str();
+                let file_info = entry.value();
+
+                // Serialize FileInfo to bytes
+                let value_bytes = bincode::encode_to_vec(file_info, bincode::config::standard())
+                    .map_err(|e| {
+                        CacheError::Io(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to serialize FileInfo: {}", e),
+                        ))
+                    })?;
+
+                table.insert(key, value_bytes.as_slice()).map_err(|e| {
+                    CacheError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to insert into redb: {}", e),
+                    ))
+                })?;
+            }
+        }
+
+        // Commit transaction (ACID guarantee)
+        write_txn.commit().map_err(|e| {
+            CacheError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to commit redb transaction: {}", e),
+            ))
+        })?;
+
         Ok(())
     }
 
@@ -552,6 +665,40 @@ impl StorageBackend for OptimizedStorage {
             found = true;
             // Delete file asynchronously
             self.write_batcher.delete_async(file_info.path);
+
+            // Remove from redb index
+            let db_guard = self.index_db.read();
+            if let Some(db) = db_guard.as_ref() {
+                let write_txn = db.begin_write().map_err(|e| {
+                    CacheError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to begin redb write transaction: {}", e),
+                    ))
+                })?;
+
+                {
+                    let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
+                        CacheError::Io(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to open redb table: {}", e),
+                        ))
+                    })?;
+
+                    table.remove(key).map_err(|e| {
+                        CacheError::Io(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to remove from redb: {}", e),
+                        ))
+                    })?;
+                }
+
+                write_txn.commit().map_err(|e| {
+                    CacheError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to commit redb transaction: {}", e),
+                    ))
+                })?;
+            }
         }
 
         Ok(found)
@@ -599,6 +746,34 @@ impl StorageBackend for OptimizedStorage {
         // Force sync to ensure all deletes are processed
         self.write_batcher.sync();
 
+        // Clear redb index
+        let db_guard = self.index_db.read();
+        if let Some(db) = db_guard.as_ref() {
+            let write_txn = db.begin_write().map_err(|e| {
+                CacheError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to begin redb write transaction: {}", e),
+                ))
+            })?;
+
+            {
+                // Delete the table to clear all entries
+                write_txn.delete_table(INDEX_TABLE).map_err(|e| {
+                    CacheError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to delete redb table: {}", e),
+                    ))
+                })?;
+            }
+
+            write_txn.commit().map_err(|e| {
+                CacheError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to commit redb transaction: {}", e),
+                ))
+            })?;
+        }
+
         Ok(())
     }
 
@@ -630,6 +805,10 @@ impl StorageBackend for OptimizedStorage {
         let file_path = self.directory.join("data").join(filename);
         std::fs::read(&file_path).map_err(CacheError::Io)
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl OptimizedStorage {
@@ -659,7 +838,9 @@ impl OptimizedStorage {
                 created_at: Self::get_current_timestamp(),
                 compressed: is_compressed,
             };
-            self.cold_index.write().insert(key.to_string(), file_info);
+            self.cold_index
+                .write()
+                .insert(key.to_string(), file_info.clone());
 
             // Write to disk with optional file locking
             if self.config.use_file_locking {
@@ -673,11 +854,48 @@ impl OptimizedStorage {
                 self.write_batcher.write_async(file_path, compressed_data);
             }
 
-            // Auto-persist index every 100 writes to prevent data loss
-            static WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
-            if WRITE_COUNTER.fetch_add(1, Ordering::Relaxed) % 100 == 0 {
-                // Persist in background to avoid blocking
-                let _ = self.persist_index();
+            // Persist to redb immediately (ACID guarantee, fast with redb)
+            let db_guard = self.index_db.read();
+            if let Some(db) = db_guard.as_ref() {
+                let write_txn = db.begin_write().map_err(|e| {
+                    CacheError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to begin redb write transaction: {}", e),
+                    ))
+                })?;
+
+                {
+                    let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
+                        CacheError::Io(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to open redb table: {}", e),
+                        ))
+                    })?;
+
+                    let value_bytes =
+                        bincode::encode_to_vec(&file_info, bincode::config::standard()).map_err(
+                            |e| {
+                                CacheError::Io(std::io::Error::new(
+                                    std::io::ErrorKind::Other,
+                                    format!("Failed to serialize FileInfo: {}", e),
+                                ))
+                            },
+                        )?;
+
+                    table.insert(key, value_bytes.as_slice()).map_err(|e| {
+                        CacheError::Io(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to insert into redb: {}", e),
+                        ))
+                    })?;
+                }
+
+                write_txn.commit().map_err(|e| {
+                    CacheError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to commit redb transaction: {}", e),
+                    ))
+                })?;
             }
         }
 
