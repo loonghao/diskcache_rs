@@ -37,7 +37,7 @@ jobs:
           pip install diskcache_rs --find-links dist --force-reinstall
           python -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-linux-abi3-${{ matrix.target }}
           path: dist
@@ -66,7 +66,7 @@ jobs:
           pip install diskcache_rs --find-links dist --force-reinstall
           python -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-windows-abi3-${{ matrix.target }}
           path: dist
@@ -95,7 +95,7 @@ jobs:
           pip install diskcache_rs --find-links dist --force-reinstall
           python -c "import diskcache_rs; print('diskcache_rs imported successfully')"
       - name: Upload wheels
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-macos-abi3-${{ matrix.target }}
           path: dist
@@ -111,7 +111,7 @@ jobs:
           command: sdist
           args: --out dist
       - name: Upload sdist
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-sdist-abi3
           path: dist
