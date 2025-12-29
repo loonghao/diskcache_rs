@@ -4,6 +4,13 @@
 
 - sync Cargo.toml version with .cz.toml and update CHANGELOG for v0.4.0
 
+## [0.4.5](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.4...diskcache_rs-v0.4.5) (2025-12-29)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate rusqlite to 0.38 ([22f31e5](https://github.com/loonghao/diskcache_rs/commit/22f31e5615806a512e9813e0a14e0f5d916bbad8))
+
 ## [0.4.4](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.3...diskcache_rs-v0.4.4) (2025-11-22)
 
 
