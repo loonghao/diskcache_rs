@@ -236,7 +236,7 @@ dependencies = [
 
 [[package]]
 name = "diskcache_rs"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "anyhow",
  "bincode",
@@ -458,9 +458,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.179"
+version = "0.2.183"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5a2d376baa530d1238d133232d15e239abad80d05838b4b59354e5268af431f"
+checksum = "b5b646652bf6661599e1da8901b3b9522896f01e736bad5f723fe7a3a27f899d"
 
 [[package]]
 name = "libsqlite3-sys"
