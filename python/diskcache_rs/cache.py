@@ -69,6 +69,7 @@ class Cache:
         self._timeout = timeout
         self._transaction_lock = threading.RLock()  # Reentrant lock for nested transactions
         self._transaction_depth = 0  # Track nested transaction depth
+        self._expire_times: Dict[str, float] = {}  # Track expiration times for expire()
 
         # Extract Rust cache parameters
         max_size = kwargs.get(
@@ -132,6 +133,13 @@ class Cache:
 
             # Store in Rust cache
             self._cache.set(key, serialized_value, expire_time=expire_time, tags=tags)
+
+            # Track expiration time for expire() method
+            if expire_time is not None:
+                self._expire_times[key] = float(expire_time)
+            else:
+                self._expire_times.pop(key, None)
+
             return True
 
         except Exception:
@@ -232,7 +240,10 @@ class Cache:
             True if key existed and was deleted
         """
         try:
-            return self._cache.delete(key)
+            result = self._cache.delete(key)
+            if result:
+                self._expire_times.pop(key, None)
+            return result
         except Exception:
             return False
 
@@ -301,6 +312,7 @@ class Cache:
         try:
             count = len(self)
             self._cache.clear()
+            self._expire_times.clear()
             return count
         except Exception:
             return 0
@@ -476,6 +488,51 @@ class Cache:
         if value is not None:
             return self.set(key, value, expire)
         return False
+
+    def expire(self, now: Optional[float] = None, retry: bool = False) -> int:
+        """
+        Remove expired items from the cache.
+
+        Removes items from the cache that have expired before the given time.
+        If *now* is not provided, ``time.time()`` is used.
+
+        Compatible with python-diskcache's ``Cache.expire()`` API.
+
+        Args:
+            now: Current time (default ``time.time()``)
+            retry: Whether to retry on failure (ignored)
+
+        Returns:
+            Count of removed expired items
+
+        Example:
+            >>> cache = Cache()
+            >>> cache.set('key', 'value', expire=0.01)
+            True
+            >>> import time; time.sleep(0.1)
+            >>> cache.expire()
+            1
+        """
+        if now is None:
+            now = time.time()
+
+        count = 0
+        # Find keys that have expired
+        expired_keys = [
+            key for key, exp_time in list(self._expire_times.items())
+            if exp_time <= now
+        ]
+
+        for key in expired_keys:
+            try:
+                self._cache.delete(key)
+                count += 1
+            except Exception:
+                pass
+            # Always remove from tracking dict
+            self._expire_times.pop(key, None)
+
+        return count
 
     def vacuum(self) -> None:
         """Manually trigger vacuum operation to sync pending writes"""
@@ -903,6 +960,32 @@ class FanoutCache:
     ) -> bool:
         """Update expiration time for key"""
         return self._get_shard(key).touch(key, expire, retry)
+
+    def expire(self, now: Optional[float] = None, retry: bool = False) -> int:
+        """
+        Remove expired items from all cache shards.
+
+        Removes items from the cache that have expired before the given time.
+        If *now* is not provided, ``time.time()`` is used.
+
+        Compatible with python-diskcache's ``FanoutCache.expire()`` API.
+
+        Args:
+            now: Current time (default ``time.time()``)
+            retry: Whether to retry on failure (ignored)
+
+        Returns:
+            Count of removed expired items across all shards
+
+        Example:
+            >>> cache = FanoutCache()
+            >>> cache.set('key', 'value', expire=0.01)
+            True
+            >>> import time; time.sleep(0.1)
+            >>> cache.expire()
+            1
+        """
+        return sum(cache.expire(now=now, retry=retry) for cache in self._caches)
 
     def close(self) -> None:
         """Close all shard caches"""
