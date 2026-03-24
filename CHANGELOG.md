@@ -4,6 +4,20 @@
 
 - sync Cargo.toml version with .cz.toml and update CHANGELOG for v0.4.0
 
+## [0.4.8](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.7...diskcache_rs-v0.4.8) (2026-03-24)
+
+
+### Features
+
+* add batched cache writes and overwrite cleanup ([82f028e](https://github.com/loonghao/diskcache_rs/commit/82f028e884dbdeed158f6c0db81053fb0afe03de))
+* add recipes, constants, exceptions, Disk/JSONDisk for full python-diskcache API parity ([799bc4d](https://github.com/loonghao/diskcache_rs/commit/799bc4dd3760b80570f3afd3922475ebc9f3413f))
+
+
+### Bug Fixes
+
+* **deps:** update rust crate pyo3 to 0.28 ([deb83c9](https://github.com/loonghao/diskcache_rs/commit/deb83c93d535aa564e423478f383bec959109775))
+* satisfy code quality checks ([a38139e](https://github.com/loonghao/diskcache_rs/commit/a38139e12317069a6cb56bd7cb6c49948630c8d8))
+
 ## [0.4.7](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.6...diskcache_rs-v0.4.7) (2026-03-24)
 
 
