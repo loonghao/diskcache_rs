@@ -17,11 +17,48 @@ from typing import (
     Optional,
     Set,
     Tuple,
+    Type,
     Union,
 )
 
 # Version
 __version__: str
+
+# ---------------------------------------------------------------------------
+# Constants (from diskcache.core)
+# ---------------------------------------------------------------------------
+
+class _Constant(tuple):
+    def __new__(cls, name: str) -> "_Constant": ...
+    def __repr__(self) -> str: ...
+
+ENOVAL: _Constant
+"""Sentinel for cache miss."""
+
+UNKNOWN: _Constant
+"""Sentinel for unknown values."""
+
+DEFAULT_SETTINGS: Dict[str, Any]
+"""Default cache settings dictionary."""
+
+EVICTION_POLICY: Dict[str, Dict[str, Optional[str]]]
+"""Eviction policy definitions."""
+
+# ---------------------------------------------------------------------------
+# Exceptions and Warnings
+# ---------------------------------------------------------------------------
+
+class Timeout(Exception):
+    """Database timeout expired."""
+    ...
+
+class EmptyDirWarning(UserWarning):
+    """Warning for empty directories found during check."""
+    ...
+
+class UnknownFileWarning(UserWarning):
+    """Warning for unknown files found during check."""
+    ...
 
 # Main Cache Classes
 class Cache:
@@ -481,15 +518,193 @@ def rust_pickle_loads(data: Any) -> Any:
     """High-performance pickle deserialization using Rust"""
     ...
 
+# ---------------------------------------------------------------------------
+# Disk Serialization Classes
+# ---------------------------------------------------------------------------
+
+class Disk:
+    """Cache key and value serialization for SQLite database and filesystem."""
+
+    def __init__(
+        self,
+        directory: Union[str, Path],
+        min_file_size: int = 0,
+        pickle_protocol: int = ...,
+    ) -> None: ...
+    @property
+    def directory(self) -> Path: ...
+    def hash(self, key: Any) -> int: ...
+    def put(self, key: Any) -> Tuple[bytes, bool]: ...
+    def get(self, key: Any, raw: bool) -> Any: ...
+    def store(
+        self, value: Any, read: bool = False, key: Any = ...
+    ) -> Tuple[int, int, Optional[str], Any]: ...
+    def fetch(
+        self, mode: int, filename: str, value: Any, read: bool = False
+    ) -> Any: ...
+    def filename(
+        self, key: Any = ..., value: Any = ...
+    ) -> Tuple[str, str]: ...
+    def remove(self, filename: str) -> None: ...
+
+class JSONDisk(Disk):
+    """Cache key and value serialization using JSON with optional compression."""
+
+    def __init__(
+        self,
+        directory: Union[str, Path],
+        compress_level: int = 1,
+        **kwargs: Any,
+    ) -> None: ...
+
+# ---------------------------------------------------------------------------
+# Recipes: Synchronization Primitives
+# ---------------------------------------------------------------------------
+
+class Lock:
+    """Cross-process and cross-thread lock backed by Cache."""
+
+    def __init__(
+        self,
+        cache: Cache,
+        key: Any,
+        expire: Optional[float] = None,
+        tag: Optional[str] = None,
+    ) -> None: ...
+    def acquire(self) -> None: ...
+    def release(self) -> None: ...
+    def locked(self) -> bool: ...
+    def __enter__(self) -> "Lock": ...
+    def __exit__(self, *exc_info: Any) -> None: ...
+
+class RLock:
+    """Cross-process and cross-thread re-entrant lock backed by Cache."""
+
+    def __init__(
+        self,
+        cache: Cache,
+        key: Any,
+        expire: Optional[float] = None,
+        tag: Optional[str] = None,
+    ) -> None: ...
+    def acquire(self) -> None: ...
+    def release(self) -> None: ...
+    def __enter__(self) -> "RLock": ...
+    def __exit__(self, *exc_info: Any) -> None: ...
+
+class BoundedSemaphore:
+    """Cross-process and cross-thread bounded semaphore backed by Cache."""
+
+    def __init__(
+        self,
+        cache: Cache,
+        key: Any,
+        value: int = 1,
+        expire: Optional[float] = None,
+        tag: Optional[str] = None,
+    ) -> None: ...
+    def acquire(self) -> None: ...
+    def release(self) -> None: ...
+    def __enter__(self) -> "BoundedSemaphore": ...
+    def __exit__(self, *exc_info: Any) -> None: ...
+
+class Averager:
+    """Recipe for calculating a running average backed by Cache."""
+
+    def __init__(
+        self,
+        cache: Cache,
+        key: Any,
+        expire: Optional[float] = None,
+        tag: Optional[str] = None,
+    ) -> None: ...
+    def add(self, value: float) -> None: ...
+    def get(self) -> Optional[float]: ...
+    def pop(self) -> Optional[float]: ...
+
+# ---------------------------------------------------------------------------
+# Recipes: Decorators
+# ---------------------------------------------------------------------------
+
+def throttle(
+    cache: Cache,
+    count: int,
+    seconds: float,
+    name: Optional[str] = None,
+    expire: Optional[float] = None,
+    tag: Optional[str] = None,
+    time_func: Callable[[], float] = ...,
+    sleep_func: Callable[[float], None] = ...,
+) -> Callable: ...
+
+def barrier(
+    cache: Cache,
+    lock_factory: Type[Union[Lock, RLock, BoundedSemaphore]],
+    name: Optional[str] = None,
+    expire: Optional[float] = None,
+    tag: Optional[str] = None,
+) -> Callable: ...
+
+def memoize_stampede(
+    cache: Cache,
+    expire: float,
+    name: Optional[str] = None,
+    typed: bool = False,
+    tag: Optional[str] = None,
+    beta: float = 1,
+    ignore: tuple = (),
+) -> Callable: ...
+
+# ---------------------------------------------------------------------------
+# Utility Functions from Recipes
+# ---------------------------------------------------------------------------
+
+def full_name(func: Callable) -> str:
+    """Return full module-qualified name of *func*."""
+    ...
+
+def args_to_key(
+    base: tuple,
+    args: tuple,
+    kwargs: dict,
+    typed: bool,
+    ignore: tuple = (),
+) -> tuple:
+    """Create cache key from function arguments."""
+    ...
+
 # Backward compatibility
 DiskCache = Cache
 
 # All exports
 __all__ = [
+    # Core cache classes
     "Cache",
     "FanoutCache",
     "Deque",
     "Index",
+    # Constants
+    "DEFAULT_SETTINGS",
+    "ENOVAL",
+    "EVICTION_POLICY",
+    "UNKNOWN",
+    # Disk serialization
+    "Disk",
+    "JSONDisk",
+    # Exceptions and warnings
+    "Timeout",
+    "EmptyDirWarning",
+    "UnknownFileWarning",
+    # Recipes: synchronization primitives
+    "Lock",
+    "RLock",
+    "BoundedSemaphore",
+    "Averager",
+    # Recipes: decorators
+    "barrier",
+    "memoize_stampede",
+    "throttle",
+    # diskcache_rs extras
     "FastCache",
     "FastFanoutCache",
     "PickleCache",

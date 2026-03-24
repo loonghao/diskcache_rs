@@ -418,6 +418,87 @@ idx == {'a': 1}
 
 ---
 
+---
+
+## Recipes API Comparison
+
+### ✅ Fully Compatible Synchronization Primitives
+
+| Class/Function | diskcache | diskcache_rs | Notes |
+|----------------|-----------|--------------|-------|
+| `Lock(cache, key, expire, tag)` | ✅ | ✅ | Cross-process spin lock |
+| `Lock.acquire()` | ✅ | ✅ | Spin-lock algorithm |
+| `Lock.release()` | ✅ | ✅ | Delete-key based |
+| `Lock.locked()` | ✅ | ✅ | Check if acquired |
+| `Lock` context manager | ✅ | ✅ | `with lock:` |
+| `RLock(cache, key, expire, tag)` | ✅ | ✅ | Re-entrant lock |
+| `RLock.acquire()` | ✅ | ✅ | PID+TID based ownership |
+| `RLock.release()` | ✅ | ✅ | Decrements count |
+| `RLock` context manager | ✅ | ✅ | `with rlock:` |
+| `BoundedSemaphore(cache, key, value, ...)` | ✅ | ✅ | Bounded semaphore |
+| `BoundedSemaphore.acquire()` | ✅ | ✅ | Spin-lock decrement |
+| `BoundedSemaphore.release()` | ✅ | ✅ | Increment with assertion |
+| `BoundedSemaphore` context manager | ✅ | ✅ | `with sem:` |
+
+### ✅ Fully Compatible Recipes and Decorators
+
+| Class/Function | diskcache | diskcache_rs | Notes |
+|----------------|-----------|--------------|-------|
+| `Averager(cache, key, expire, tag)` | ✅ | ✅ | Running average |
+| `Averager.add(value)` | ✅ | ✅ | Add value to average |
+| `Averager.get()` | ✅ | ✅ | Get current average |
+| `Averager.pop()` | ✅ | ✅ | Get average and delete |
+| `throttle(cache, count, seconds, ...)` | ✅ | ✅ | Rate limiting decorator |
+| `barrier(cache, lock_factory, ...)` | ✅ | ✅ | Barrier decorator |
+| `memoize_stampede(cache, expire, ...)` | ✅ | ✅ | Stampede-protected memoize |
+
+---
+
+## Constants and Exceptions API Comparison
+
+### ✅ Fully Compatible Constants
+
+| Constant | diskcache | diskcache_rs | Notes |
+|----------|-----------|--------------|-------|
+| `ENOVAL` | ✅ | ✅ | Cache miss sentinel |
+| `UNKNOWN` | ✅ | ✅ | Unknown value sentinel |
+| `DEFAULT_SETTINGS` | ✅ | ✅ | Default cache settings dict |
+| `EVICTION_POLICY` | ✅ | ✅ | Eviction policy definitions |
+
+### ✅ Fully Compatible Exceptions and Warnings
+
+| Class | diskcache | diskcache_rs | Notes |
+|-------|-----------|--------------|-------|
+| `Timeout` | ✅ | ✅ | Database timeout exception |
+| `EmptyDirWarning` | ✅ | ✅ | Empty directory warning |
+| `UnknownFileWarning` | ✅ | ✅ | Unknown file warning |
+
+---
+
+## Disk Serialization API Comparison
+
+### ✅ Fully Compatible Disk Classes
+
+| Class | diskcache | diskcache_rs | Notes |
+|-------|-----------|--------------|-------|
+| `Disk(directory, min_file_size, ...)` | ✅ | ✅ | Pickle-based serialization |
+| `Disk.store(value, read, key)` | ✅ | ✅ | Serialize value |
+| `Disk.fetch(mode, filename, value, read)` | ✅ | ✅ | Deserialize value |
+| `Disk.put(key)` | ✅ | ✅ | Serialize key |
+| `Disk.get(key, raw)` | ✅ | ✅ | Deserialize key |
+| `Disk.hash(key)` | ✅ | ✅ | Hash key |
+| `Disk.filename(key, value)` | ✅ | ✅ | Generate filename |
+| `Disk.remove(filename)` | ✅ | ✅ | Remove file |
+| `JSONDisk(directory, compress_level)` | ✅ | ✅ | JSON+zlib serialization |
+
+### ⚠️ Not Applicable
+
+| Feature | Notes |
+|---------|-------|
+| `DjangoCache` | Django integration - only available when Django is installed |
+
+---
+
 ## Conclusion
 
 ### Can developers just change the namespace?
@@ -438,5 +519,10 @@ idx == {'a': 1}
 - ✅ **Expire time return** (get/pop/peek with expire_time): Fully compatible
 - ✅ **Read parameter** (set/get with read=True): Fully compatible
 - ✅ **Pickle serialization** (__getstate__/__setstate__): Fully compatible
+- ✅ **Synchronization** (Lock/RLock/BoundedSemaphore): Fully compatible
+- ✅ **Recipes** (Averager/throttle/barrier/memoize_stampede): Fully compatible
+- ✅ **Constants** (ENOVAL/UNKNOWN/DEFAULT_SETTINGS/EVICTION_POLICY): Fully compatible
+- ✅ **Exceptions** (Timeout/EmptyDirWarning/UnknownFileWarning): Fully compatible
+- ✅ **Disk classes** (Disk/JSONDisk): Fully compatible
 
 **Migration is straightforward for all use cases - just change the import!** 🎉
