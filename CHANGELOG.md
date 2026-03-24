@@ -4,6 +4,18 @@
 
 - sync Cargo.toml version with .cz.toml and update CHANGELOG for v0.4.0
 
+## [0.4.6](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.5...diskcache_rs-v0.4.6) (2026-03-24)
+
+
+### Features
+
+* add expire() method to Cache and FanoutCache (fixes [#78](https://github.com/loonghao/diskcache_rs/issues/78)) ([d044a63](https://github.com/loonghao/diskcache_rs/commit/d044a63e0bd9383880703d1f8c5ddc8b70118163))
+
+
+### Bug Fixes
+
+* use deterministic hashing for FanoutCache shard assignment ([bfe1aeb](https://github.com/loonghao/diskcache_rs/commit/bfe1aebaed3ae3c338f5ab4496fd442c661ec8f7))
+
 ## [0.4.5](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.4...diskcache_rs-v0.4.5) (2026-01-04)
 
 
