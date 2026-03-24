@@ -73,7 +73,14 @@ class Cache:
         tag: Optional[str] = None,
         retry: bool = False,
     ) -> bool: ...
+    def set_many(
+        self,
+        items: Union[Dict[Any, Any], List[Tuple[Any, Any]], Iterator[Tuple[Any, Any]]],
+        expire: Optional[float] = None,
+        tag: Optional[str] = None,
+    ) -> int: ...
     def delete(self, key: Any, retry: bool = False) -> bool: ...
+
     def pop(
         self,
         key: Any,

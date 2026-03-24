@@ -159,7 +159,50 @@ class Cache:
         except Exception:
             return False
 
+    def set_many(
+        self,
+        items: Union[Dict[str, Any], List[Tuple[str, Any]], Iterator[Tuple[str, Any]]],
+        expire: Optional[float] = None,
+        tag: Optional[str] = None,
+    ) -> int:
+        """Set multiple keys in one batched Rust call and return the number of stored items."""
+        try:
+            normalized_items = list(items.items()) if hasattr(items, "items") else list(items)
+            if not normalized_items:
+                return 0
+
+            expire_time = None
+            if expire is not None:
+                if expire > time.time():
+                    expire_time = int(expire)
+                else:
+                    expire_time = int(time.time() + expire)
+
+            serialized_items = []
+            for key, value in normalized_items:
+                serialized_items.append((str(key), pickle.dumps(value)))
+
+            tags = [tag] if tag else []
+            self._cache.set_many(serialized_items, expire_time=expire_time, tags=tags)
+
+            for key, _ in normalized_items:
+                normalized_key = str(key)
+                if expire_time is not None:
+                    self._expire_times[normalized_key] = float(expire_time)
+                else:
+                    self._expire_times.pop(normalized_key, None)
+
+                if tag is not None:
+                    self._tags[normalized_key] = tag
+                else:
+                    self._tags.pop(normalized_key, None)
+
+            return len(normalized_items)
+        except Exception:
+            return 0
+
     def _auto_deserialize(self, data: bytes) -> Any:
+
         """
         Auto-detect and deserialize data from various formats
 
