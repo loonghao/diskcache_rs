@@ -219,6 +219,50 @@ impl DiskCache {
         Ok(())
     }
 
+    /// Set multiple values in the cache using a batched storage path.
+    pub fn set_many(
+        &self,
+        items: Vec<(String, Vec<u8>)>,
+        expire_time: Option<u64>,
+        tags: Vec<String>,
+    ) -> CacheResult<()> {
+        if items.is_empty() {
+            return Ok(());
+        }
+
+        self.enforce_cache_limits()?;
+
+        let mut storage_entries = Vec::with_capacity(items.len());
+        let mut cache_entries = Vec::with_capacity(items.len());
+        let mut total_size = 0_u64;
+
+        for (key, value) in items {
+            validate_key(&key)?;
+            total_size += value.len() as u64;
+            storage_entries.push((key.clone(), value.clone()));
+            cache_entries.push(CacheEntry::new_inline(key, value, tags.clone(), expire_time));
+        }
+
+        self.storage.set_batch(storage_entries)?;
+
+        for entry in &cache_entries {
+            self.eviction.on_insert(&entry.key, entry);
+            if let Some(ref memory_cache) = self.memory_cache {
+                memory_cache.put(entry.key.clone(), entry.clone());
+            }
+        }
+
+        let mut stats = self.stats.write();
+        stats.sets += cache_entries.len() as u64;
+        stats.total_size += total_size;
+        stats.entry_count += cache_entries.len() as u64;
+
+        self.enforce_cache_limits()?;
+
+        Ok(())
+    }
+
+
     /// Delete a value from the cache
     pub fn delete(&self, key: &str) -> CacheResult<bool> {
         validate_key(key)?;

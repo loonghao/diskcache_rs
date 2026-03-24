@@ -4,7 +4,8 @@ use crate::storage::StorageBackend;
 use bytes::{Bytes, BytesMut};
 use dashmap::DashMap;
 use memmap2::{Mmap, MmapOptions};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
+
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -156,7 +157,8 @@ impl BufferPool {
 
 /// Batched write operations for better I/O performance
 struct WriteBatcher {
-    sender: mpsc::Sender<WriteOp>,
+    sender: Mutex<Option<mpsc::Sender<WriteOp>>>,
+    worker: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 #[derive(Debug)]
@@ -164,13 +166,14 @@ enum WriteOp {
     Write { path: PathBuf, data: Bytes },
     Delete { path: PathBuf },
     Sync { done: mpsc::SyncSender<()> },
+    Shutdown { done: mpsc::SyncSender<()> },
 }
 
 impl WriteBatcher {
     fn new(_directory: PathBuf, batch_size: usize) -> Self {
         let (sender, receiver) = mpsc::channel();
 
-        std::thread::spawn(move || {
+        let worker = std::thread::spawn(move || {
             let mut batch = Vec::with_capacity(batch_size);
             let mut writer_map: std::collections::HashMap<PathBuf, BufWriter<File>> =
                 std::collections::HashMap::new();
@@ -184,6 +187,7 @@ impl WriteBatcher {
                         }
                     }
                     WriteOp::Delete { path } => {
+                        Self::flush_batch(&mut batch, &mut writer_map);
                         let _ = std::fs::remove_file(&path);
                     }
                     WriteOp::Sync { done } => {
@@ -191,17 +195,26 @@ impl WriteBatcher {
                         for writer in writer_map.values_mut() {
                             let _ = writer.flush();
                         }
-                        // Signal completion
                         let _ = done.send(());
+                    }
+                    WriteOp::Shutdown { done } => {
+                        Self::flush_batch(&mut batch, &mut writer_map);
+                        for writer in writer_map.values_mut() {
+                            let _ = writer.flush();
+                        }
+                        let _ = done.send(());
+                        break;
                     }
                 }
             }
 
-            // Final flush
             Self::flush_batch(&mut batch, &mut writer_map);
         });
 
-        Self { sender }
+        Self {
+            sender: Mutex::new(Some(sender)),
+            worker: Mutex::new(Some(worker)),
+        }
     }
 
     fn flush_batch(
@@ -223,20 +236,39 @@ impl WriteBatcher {
     }
 
     fn write_async(&self, path: PathBuf, data: Bytes) {
-        let _ = self.sender.send(WriteOp::Write { path, data });
+        if let Some(sender) = self.sender.lock().as_ref() {
+            let _ = sender.send(WriteOp::Write { path, data });
+        }
     }
 
     fn delete_async(&self, path: PathBuf) {
-        let _ = self.sender.send(WriteOp::Delete { path });
+        if let Some(sender) = self.sender.lock().as_ref() {
+            let _ = sender.send(WriteOp::Delete { path });
+        }
     }
 
     fn sync(&self) {
-        let (done_tx, done_rx) = mpsc::sync_channel(0); // Rendezvous channel for immediate sync
-        let _ = self.sender.send(WriteOp::Sync { done: done_tx });
-        // Wait for sync to complete
-        let _ = done_rx.recv();
+        let (done_tx, done_rx) = mpsc::sync_channel(0);
+        if let Some(sender) = self.sender.lock().as_ref() {
+            let _ = sender.send(WriteOp::Sync { done: done_tx });
+            let _ = done_rx.recv();
+        }
+    }
+
+    fn shutdown(&self) {
+        let sender = self.sender.lock().take();
+        if let Some(sender) = sender {
+            let (done_tx, done_rx) = mpsc::sync_channel(0);
+            let _ = sender.send(WriteOp::Shutdown { done: done_tx });
+            let _ = done_rx.recv();
+        }
+
+        if let Some(worker) = self.worker.lock().take() {
+            let _ = worker.join();
+        }
     }
 }
+
 
 /// Performance statistics
 #[derive(Default)]
@@ -405,6 +437,8 @@ impl OptimizedStorage {
     /// Close the redb database explicitly
     /// This releases the file lock and allows other processes to open the database
     pub fn close_db(&self) {
+        self.write_batcher.shutdown();
+
         // Flush all in-memory data to disk before closing
         if let Err(e) = self.flush_memory_caches() {
             tracing::error!("Failed to flush memory caches during close: {}", e);
@@ -414,6 +448,7 @@ impl OptimizedStorage {
         *db_guard = None;
         tracing::debug!("Closed redb database");
     }
+
 
     /// Flush all in-memory caches (hot_cache and warm_cache) to disk
     /// This ensures data persistence when closing the cache
@@ -587,7 +622,116 @@ impl OptimizedStorage {
             .join(format!("{}.dat", &hex_hash[..16]))
     }
 
+    fn remove_existing_persisted_entry(&self, key: &str) -> CacheResult<()> {
+        let Some((_, file_info)) = self.cold_index.write().remove(key) else {
+            return Ok(());
+        };
+
+        if !file_info.path.to_string_lossy().starts_with("memory://") {
+            self.write_batcher.sync();
+            match std::fs::remove_file(&file_info.path) {
+                Ok(_) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => return Err(CacheError::Io(err)),
+            }
+        }
+
+
+        let db_guard = self.index_db.read();
+        let db = match db_guard.as_ref() {
+            Some(db) => db,
+            None => return Ok(()),
+        };
+
+        let write_txn = db.begin_write().map_err(|e| {
+            CacheError::Io(std::io::Error::other(format!(
+                "Failed to begin redb write transaction: {}",
+                e
+            )))
+        })?;
+
+        {
+            let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
+                CacheError::Io(std::io::Error::other(format!(
+                    "Failed to open redb table: {}",
+                    e
+                )))
+            })?;
+
+            table.remove(key).map_err(|e| {
+                CacheError::Io(std::io::Error::other(format!(
+                    "Failed to remove from redb: {}",
+                    e
+                )))
+            })?;
+        }
+
+        write_txn.commit().map_err(|e| {
+            CacheError::Io(std::io::Error::other(format!(
+                "Failed to commit redb transaction: {}",
+                e
+            )))
+        })?;
+
+        Ok(())
+    }
+
+    fn persist_file_infos(&self, file_infos: &[(String, FileInfo)]) -> CacheResult<()> {
+        if file_infos.is_empty() {
+            return Ok(());
+        }
+
+        let db_guard = self.index_db.read();
+        let db = match db_guard.as_ref() {
+            Some(db) => db,
+            None => return Ok(()),
+        };
+
+        let write_txn = db.begin_write().map_err(|e| {
+            CacheError::Io(std::io::Error::other(format!(
+                "Failed to begin redb write transaction: {}",
+                e
+            )))
+        })?;
+
+        {
+            let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
+                CacheError::Io(std::io::Error::other(format!(
+                    "Failed to open redb table: {}",
+                    e
+                )))
+            })?;
+
+            for (key, file_info) in file_infos {
+                let value_bytes = bincode::encode_to_vec(file_info, bincode::config::standard())
+                    .map_err(|e| {
+                        CacheError::Io(std::io::Error::other(format!(
+                            "Failed to serialize FileInfo: {}",
+                            e
+                        )))
+                    })?;
+
+                table.insert(key.as_str(), value_bytes.as_slice()).map_err(|e| {
+                    CacheError::Io(std::io::Error::other(format!(
+                        "Failed to insert into redb: {}",
+                        e
+                    )))
+                })?;
+            }
+        }
+
+        write_txn.commit().map_err(|e| {
+            CacheError::Io(std::io::Error::other(format!(
+                "Failed to commit redb transaction: {}",
+                e
+            )))
+        })?;
+
+        Ok(())
+    }
+
     /// Compress data if it provides significant space savings
+
     fn compress_if_beneficial(&self, data: &[u8]) -> (Bytes, bool) {
         if !self.config.use_compression || data.len() < self.config.compression_threshold {
             return (Bytes::copy_from_slice(data), false);
@@ -798,7 +942,56 @@ impl StorageBackend for OptimizedStorage {
         self.set_data(key, data)
     }
 
+    fn set_batch(&self, entries: Vec<(String, Vec<u8>)>) -> CacheResult<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        let mut file_infos = Vec::new();
+
+        for (key, data) in entries {
+            let data_size = data.len();
+            self.stats.record_write(data_size as u64);
+
+            self.hot_cache.remove(&key);
+            self.warm_cache.remove(&key);
+            self.remove_existing_persisted_entry(&key)?;
+
+            if data_size < self.config.disk_write_threshold {
+                self.hot_cache.insert(key, Bytes::from(data));
+                continue;
+            }
+
+            let (compressed_data, is_compressed) = self.compress_if_beneficial(&data);
+            let file_path = self.build_file_path(&key);
+            let file_info = FileInfo {
+                path: file_path.clone(),
+                size: compressed_data.len() as u64,
+                created_at: Self::get_current_timestamp(),
+                compressed: is_compressed,
+            };
+
+            self.cold_index.write().insert(key.clone(), file_info.clone());
+
+            if self.config.use_file_locking {
+                self.write_with_lock(&file_path, &compressed_data)?;
+            } else if self.config.sync_writes || data_size > 1024 * 1024 {
+                std::fs::write(&file_path, &compressed_data).map_err(CacheError::Io)?;
+            } else {
+                self.write_batcher.write_async(file_path, compressed_data);
+            }
+
+            file_infos.push((key, file_info));
+        }
+
+        self.cleanup_hot_cache();
+        self.persist_file_infos(&file_infos)?;
+
+        Ok(())
+    }
+
     fn delete(&self, key: &str) -> CacheResult<bool> {
+
         let mut found = false;
 
         // Remove from all cache levels
@@ -969,6 +1162,7 @@ impl OptimizedStorage {
         // Remove from all cache levels first
         self.hot_cache.remove(key);
         self.warm_cache.remove(key);
+        self.remove_existing_persisted_entry(key)?;
 
         if data_size < self.config.disk_write_threshold {
             // Small data: store in hot cache only (below disk_write_threshold)
@@ -1003,53 +1197,12 @@ impl OptimizedStorage {
                 self.write_batcher.write_async(file_path, compressed_data);
             }
 
-            // Persist to redb immediately (ACID guarantee, fast with redb)
-            let db_guard = self.index_db.read();
-            if let Some(db) = db_guard.as_ref() {
-                let write_txn = db.begin_write().map_err(|e| {
-                    CacheError::Io(std::io::Error::other(format!(
-                        "Failed to begin redb write transaction: {}",
-                        e
-                    )))
-                })?;
-
-                {
-                    let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
-                        CacheError::Io(std::io::Error::other(format!(
-                            "Failed to open redb table: {}",
-                            e
-                        )))
-                    })?;
-
-                    let value_bytes =
-                        bincode::encode_to_vec(&file_info, bincode::config::standard()).map_err(
-                            |e| {
-                                CacheError::Io(std::io::Error::other(format!(
-                                    "Failed to serialize FileInfo: {}",
-                                    e
-                                )))
-                            },
-                        )?;
-
-                    table.insert(key, value_bytes.as_slice()).map_err(|e| {
-                        CacheError::Io(std::io::Error::other(format!(
-                            "Failed to insert into redb: {}",
-                            e
-                        )))
-                    })?;
-                }
-
-                write_txn.commit().map_err(|e| {
-                    CacheError::Io(std::io::Error::other(format!(
-                        "Failed to commit redb transaction: {}",
-                        e
-                    )))
-                })?;
-            }
+            self.persist_file_infos(&[(key.to_string(), file_info)])?;
         }
 
         Ok(())
     }
+
 
     /// Write data to file with exclusive lock (for NFS scenarios)
     fn write_with_lock(&self, file_path: &Path, data: &[u8]) -> CacheResult<()> {
@@ -1117,6 +1270,7 @@ impl OptimizedStorage {
 
 impl Drop for OptimizedStorage {
     fn drop(&mut self) {
+        self.write_batcher.shutdown();
         // Ensure index is persisted when storage is dropped
         let _ = self.persist_index();
     }

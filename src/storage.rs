@@ -10,7 +10,9 @@ pub use optimized_backend::OptimizedStorage;
 pub trait StorageBackend: Send + Sync {
     fn get(&self, key: &str) -> CacheResult<Option<CacheEntry>>;
     fn set(&self, key: &str, entry: CacheEntry) -> CacheResult<()>;
+    fn set_batch(&self, entries: Vec<(String, Vec<u8>)>) -> CacheResult<()>;
     fn delete(&self, key: &str) -> CacheResult<bool>;
+
     fn exists(&self, key: &str) -> CacheResult<bool>;
     fn keys(&self) -> CacheResult<Vec<String>>;
     fn clear(&self) -> CacheResult<()>;
