@@ -269,7 +269,6 @@ impl WriteBatcher {
     }
 }
 
-
 /// Performance statistics
 #[derive(Default)]
 struct StorageStats {
@@ -405,20 +404,34 @@ impl OptimizedStorage {
                 )))
             })?;
 
+            let key = key.value().to_string();
+            let value_bytes = value.value();
+
             // Deserialize FileInfo from bytes
-            let file_info: FileInfo =
-                bincode::decode_from_slice(value.value(), bincode::config::standard())
-                    .map_err(|e| {
+            let (file_info, decoded_len): (FileInfo, usize) =
+                bincode::decode_from_slice(value_bytes, bincode::config::standard()).map_err(
+                    |e| {
                         CacheError::Io(std::io::Error::other(format!(
                             "Failed to deserialize FileInfo: {}",
                             e
                         )))
-                    })?
-                    .0;
+                    },
+                )?;
+
+            if file_info.path.to_string_lossy().starts_with("memory://") {
+                if value_bytes.len() > decoded_len {
+                    self.hot_cache
+                        .insert(key, Bytes::copy_from_slice(&value_bytes[decoded_len..]));
+                    loaded_count += 1;
+                } else {
+                    skipped_count += 1;
+                }
+                continue;
+            }
 
             // Verify file still exists before adding to index
             if file_info.path.exists() {
-                index.insert(key.value().to_string(), file_info);
+                index.insert(key, file_info);
                 loaded_count += 1;
             } else {
                 skipped_count += 1;
@@ -448,7 +461,6 @@ impl OptimizedStorage {
         *db_guard = None;
         tracing::debug!("Closed redb database");
     }
-
 
     /// Flush all in-memory caches (hot_cache and warm_cache) to disk
     /// This ensures data persistence when closing the cache
@@ -636,7 +648,6 @@ impl OptimizedStorage {
             }
         }
 
-
         let db_guard = self.index_db.read();
         let db = match db_guard.as_ref() {
             Some(db) => db,
@@ -711,12 +722,14 @@ impl OptimizedStorage {
                         )))
                     })?;
 
-                table.insert(key.as_str(), value_bytes.as_slice()).map_err(|e| {
-                    CacheError::Io(std::io::Error::other(format!(
-                        "Failed to insert into redb: {}",
-                        e
-                    )))
-                })?;
+                table
+                    .insert(key.as_str(), value_bytes.as_slice())
+                    .map_err(|e| {
+                        CacheError::Io(std::io::Error::other(format!(
+                            "Failed to insert into redb: {}",
+                            e
+                        )))
+                    })?;
             }
         }
 
@@ -732,7 +745,6 @@ impl OptimizedStorage {
 
     /// Compress data if it provides significant space savings
     fn compress_if_beneficial(&self, data: &[u8]) -> (Bytes, bool) {
-
         if !self.config.use_compression || data.len() < self.config.compression_threshold {
             return (Bytes::copy_from_slice(data), false);
         }
@@ -971,7 +983,9 @@ impl StorageBackend for OptimizedStorage {
                 compressed: is_compressed,
             };
 
-            self.cold_index.write().insert(key.clone(), file_info.clone());
+            self.cold_index
+                .write()
+                .insert(key.clone(), file_info.clone());
 
             if self.config.use_file_locking {
                 self.write_with_lock(&file_path, &compressed_data)?;
@@ -990,8 +1004,9 @@ impl StorageBackend for OptimizedStorage {
         Ok(())
     }
 
-    fn delete(&self, key: &str) -> CacheResult<bool> {
 
+
+    fn delete(&self, key: &str) -> CacheResult<bool> {
         let mut found = false;
 
         // Remove from all cache levels
@@ -1202,7 +1217,6 @@ impl OptimizedStorage {
 
         Ok(())
     }
-
 
     /// Write data to file with exclusive lock (for NFS scenarios)
     fn write_with_lock(&self, file_path: &Path, data: &[u8]) -> CacheResult<()> {

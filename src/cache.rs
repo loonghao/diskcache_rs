@@ -7,7 +7,8 @@ use crate::storage::{OptimizedStorage, StorageBackend};
 use crate::utils::{current_timestamp, validate_cache_config, validate_key, CacheStats};
 use parking_lot::RwLock;
 use pyo3::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -198,6 +199,8 @@ impl DiskCache {
         // Enforce cache size and entry limits
         self.enforce_cache_limits()?;
 
+        let existed = self.storage.exists(key)?;
+
         // Always use inline storage for simplicity (OptimizedStorage handles the optimization)
         let entry = CacheEntry::new_inline(key.to_string(), value.to_vec(), tags, expire_time);
 
@@ -214,7 +217,9 @@ impl DiskCache {
         let mut stats = self.stats.write();
         stats.sets += 1;
         stats.total_size += entry.size;
-        stats.entry_count += 1;
+        if !existed {
+            stats.entry_count += 1;
+        }
 
         Ok(())
     }
@@ -235,12 +240,24 @@ impl DiskCache {
         let mut storage_entries = Vec::with_capacity(items.len());
         let mut cache_entries = Vec::with_capacity(items.len());
         let mut total_size = 0_u64;
+        let mut new_entries = 0_u64;
+        let mut seen_keys = HashSet::with_capacity(items.len());
 
         for (key, value) in items {
             validate_key(&key)?;
+
+            if seen_keys.insert(key.clone()) && !self.storage.exists(&key)? {
+                new_entries += 1;
+            }
+
             total_size += value.len() as u64;
             storage_entries.push((key.clone(), value.clone()));
-            cache_entries.push(CacheEntry::new_inline(key, value, tags.clone(), expire_time));
+            cache_entries.push(CacheEntry::new_inline(
+                key,
+                value,
+                tags.clone(),
+                expire_time,
+            ));
         }
 
         self.storage.set_batch(storage_entries)?;
@@ -255,12 +272,14 @@ impl DiskCache {
         let mut stats = self.stats.write();
         stats.sets += cache_entries.len() as u64;
         stats.total_size += total_size;
-        stats.entry_count += cache_entries.len() as u64;
+        stats.entry_count += new_entries;
+        drop(stats);
 
         self.enforce_cache_limits()?;
 
         Ok(())
     }
+
 
 
     /// Delete a value from the cache
@@ -343,8 +362,10 @@ impl DiskCache {
 
     /// Check cache limits and evict entries if necessary
     fn enforce_cache_limits(&self) -> CacheResult<()> {
-        let current_size = self.size()?;
-        let current_entries = self.keys()?.len() as u64;
+        let stats = self.stats.read();
+        let current_size = stats.total_size;
+        let current_entries = stats.entry_count;
+        drop(stats);
 
         let mut evict_count = 0;
 
@@ -512,14 +533,12 @@ impl PyCache {
         tags: Option<Vec<String>>,
     ) -> PyResult<()> {
         let tags = tags.unwrap_or_default();
-
-        // For now, use individual operations but optimize the loop
-        for (key, value) in items {
-            self.cache.set(&key, &value, expire_time, tags.clone())?;
-        }
-
+        self.cache.set_many(items, expire_time, tags)?;
         Ok(())
     }
+
+
+
 
     fn delete(&self, key: &str) -> PyResult<bool> {
         Ok(self.cache.delete(key)?)
@@ -833,3 +852,32 @@ impl RustFanoutCache {
         (hash_value as usize) % self.shards
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::DiskCache;
+    use tempfile::TempDir;
+
+    #[test]
+    fn disk_cache_set_many_round_trip() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache = DiskCache::with_directory(temp_dir.path()).unwrap();
+
+        cache
+            .set_many(
+                vec![
+                    ("alpha".to_string(), b"one".to_vec()),
+                    ("beta".to_string(), b"two".to_vec()),
+                ],
+                None,
+                vec![],
+            )
+            .unwrap();
+
+        assert_eq!(cache.get("alpha").unwrap(), Some(b"one".to_vec()));
+        assert_eq!(cache.get("beta").unwrap(), Some(b"two".to_vec()));
+
+        cache.close();
+    }
+}
+
