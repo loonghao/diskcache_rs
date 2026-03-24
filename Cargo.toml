@@ -40,7 +40,7 @@ rusqlite = { version = "0.39", features = ["bundled", "blob", "chrono"] }
 # tokio removed - using std::thread instead for simplicity
 parking_lot = "0.12"
 dashmap = "6.1"
-lz4_flex = "0.12"
+lz4_flex = "0.13"
 blake3 = "1.8"
 bytes = "1.11"
 memmap2 = "0.9"
