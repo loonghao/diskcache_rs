@@ -298,8 +298,21 @@ class FastFanoutCache:
             self._caches.append(cache)
 
     def _get_shard(self, key: str) -> FastCache:
-        """Get the cache shard for a given key"""
-        shard_index = hash(key) % self.shards
+        """Get the cache shard for a given key using deterministic hashing.
+
+        Uses BLAKE2b (or SHA-256 fallback) instead of Python's built-in hash()
+        to ensure consistent shard assignment across process restarts.
+        Python's hash() is randomized per process (PYTHONHASHSEED), which
+        causes cache misses when keys are looked up in a different process
+        than the one that stored them (issue #73).
+        """
+        try:
+            import hashlib
+            h = hashlib.blake2b(key.encode(), digest_size=8).digest()
+        except (AttributeError, ValueError):
+            import hashlib
+            h = hashlib.sha256(key.encode()).digest()[:8]
+        shard_index = int.from_bytes(h, byteorder="little") % self.shards
         return self._caches[shard_index]
 
     def set(self, key: str, value: Any, **kwargs) -> bool:
