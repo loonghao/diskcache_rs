@@ -46,6 +46,32 @@ class TestBatchOperations:
         assert expire_time is not None
         assert tag == "batch"
 
+    def test_set_many_restores_memory_only_entries_after_reopen(self):
+        """Memory-only batch entries should still participate in `len`, `in`, and `get` after reopen."""
+        with tempfile.TemporaryDirectory(prefix="diskcache_rs_batch_reopen_") as cache_dir:
+            cache = Cache(cache_dir, disk_write_threshold=4096)
+            stored = cache.set_many(
+                {
+                    "alpha": b"a" * 64,
+                    "beta": b"b" * 96,
+                    "gamma": b"c" * 128,
+                }
+            )
+            assert stored == 3
+            assert cache.stats()["count"] == 3
+            cache.close()
+
+            reopened = Cache(cache_dir, disk_write_threshold=4096)
+            try:
+                assert len(reopened) == 3
+                assert "alpha" in reopened
+                assert reopened.get("alpha") == b"a" * 64
+                assert reopened.get("beta") == b"b" * 96
+                assert reopened.get("gamma") == b"c" * 128
+            finally:
+                reopened.close()
+
+
     def test_overwrite_large_value_with_small_value_removes_stale_disk_file(self):
         """Overwriting a disk-backed value with a memory-backed value should not leave stale files."""
         with tempfile.TemporaryDirectory(prefix="diskcache_rs_overwrite_") as cache_dir:
@@ -70,7 +96,48 @@ class TestBatchOperations:
             finally:
                 reopened.close()
 
+    def test_set_many_overwrite_removes_stale_disk_file(self):
+        """Batch overwrite should clean up old disk files when the new value stays in memory."""
+        with tempfile.TemporaryDirectory(prefix="diskcache_rs_batch_overwrite_") as cache_dir:
+            cache = Cache(cache_dir)
+            cache.set("same-key", b"a" * 4096)
+            cache.vacuum()
+
+            data_dir = Path(cache_dir) / "data"
+            assert len(list(data_dir.glob("*.dat"))) == 1
+
+            stored = cache.set_many({"same-key": b"b" * 128})
+            assert stored == 1
+            cache.close()
+
+            assert list(data_dir.glob("*.dat")) == []
+
+            reopened = Cache(cache_dir)
+            try:
+                assert reopened.get("same-key") == b"b" * 128
+            finally:
+                reopened.close()
+
+    def test_overwrite_keeps_stats_count_stable(self, temp_cache_dir):
+        """Overwriting existing keys should not inflate the tracked entry count."""
+        cache = Cache(temp_cache_dir)
+
+        cache.set("same-key", "first")
+        assert cache.stats()["count"] == 1
+
+        cache.set("same-key", "second")
+        assert cache.stats()["count"] == 1
+        assert len(cache) == 1
+
+        stored = cache.set_many({"same-key": "third", "other-key": "value"})
+        assert stored == 2
+        assert cache.get("same-key") == "third"
+        assert cache.get("other-key") == "value"
+        assert cache.stats()["count"] == 2
+        assert len(cache) == 2
+
     def test_close_releases_background_writer_handles(self):
+
         """Closing the cache should allow the directory to be deleted immediately on Windows."""
         cache_dir = Path(tempfile.mkdtemp(prefix="diskcache_rs_cleanup_"))
 
