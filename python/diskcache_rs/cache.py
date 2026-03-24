@@ -73,6 +73,7 @@ class Cache:
         )  # Reentrant lock for nested transactions
         self._transaction_depth = 0  # Track nested transaction depth
         self._expire_times: Dict[str, float] = {}  # Track expiration times for expire()
+        self._tags: Dict[str, str] = {}  # Track tags for tag-based operations
 
         # Extract Rust cache parameters
         max_size = kwargs.get(
@@ -118,6 +119,10 @@ class Cache:
             True if successful
         """
         try:
+            # Handle read=True: read value from file-like object
+            if read and hasattr(value, "read"):
+                value = value.read()
+
             # Serialize the value
             serialized_value = pickle.dumps(value)
 
@@ -142,6 +147,12 @@ class Cache:
                 self._expire_times[key] = float(expire_time)
             else:
                 self._expire_times.pop(key, None)
+
+            # Track tag for tag-based operations
+            if tag is not None:
+                self._tags[key] = tag
+            else:
+                self._tags.pop(key, None)
 
             return True
 
@@ -202,34 +213,54 @@ class Cache:
         Args:
             key: Cache key
             default: Default value if key not found
-            read: Whether this is a read operation (ignored)
-            expire_time: Whether to return expire time (not supported)
-            tag: Whether to return tag (not supported)
+            read: If True, return file handle for value
+            expire_time: If True, return expire time in tuple
+            tag: If True, return tag in tuple
             retry: Whether to retry on failure (ignored)
 
         Returns:
-            Cached value or default
+            Cached value or default. If expire_time or tag is True,
+            returns a tuple of (value, expire_time, tag) as requested.
         """
         try:
             serialized_value = self._cache.get(key)
             if serialized_value is None:
+                if expire_time and tag:
+                    return (default, None, None)
+                elif expire_time:
+                    return (default, None)
+                elif tag:
+                    return (default, None)
                 return default
 
             # Auto-detect and deserialize the value
             value = self._auto_deserialize(serialized_value)
 
+            # Handle read=True: wrap value in BytesIO
+            if read:
+                if isinstance(value, bytes):
+                    value = io.BytesIO(value)
+                else:
+                    value = io.BytesIO(serialized_value)
+
             # Handle additional return values
             if expire_time or tag:
                 result = [value]
                 if expire_time:
-                    result.append(None)  # Expire time not supported yet
+                    result.append(self._expire_times.get(key))
                 if tag:
-                    result.append(None)  # Tag not supported yet
+                    result.append(self._tags.get(key))
                 return tuple(result)
 
             return value
 
         except Exception:
+            if expire_time and tag:
+                return (default, None, None)
+            elif expire_time:
+                return (default, None)
+            elif tag:
+                return (default, None)
             return default
 
     def delete(self, key: str) -> bool:
@@ -246,6 +277,7 @@ class Cache:
             result = self._cache.delete(key)
             if result:
                 self._expire_times.pop(key, None)
+                self._tags.pop(key, None)
             return result
         except Exception:
             return False
@@ -316,6 +348,7 @@ class Cache:
             count = len(self)
             self._cache.clear()
             self._expire_times.clear()
+            self._tags.clear()
             return count
         except Exception:
             return 0
@@ -334,8 +367,8 @@ class Cache:
         Args:
             key: Cache key
             default: Default value if key not found
-            expire_time: Whether to return expire time (not supported)
-            tag: Whether to return tag (not supported)
+            expire_time: If True, return expire time in tuple
+            tag: If True, return tag in tuple
             retry: Whether to retry on failure (ignored)
 
         Returns:
@@ -343,21 +376,36 @@ class Cache:
         """
         try:
             value = self.get(key)
-            if value is None:
-                if expire_time or tag:
+            if value is None and key not in self:
+                if expire_time and tag:
                     return (default, None, None)
+                elif expire_time:
+                    return (default, None)
+                elif tag:
+                    return (default, None)
                 return default
 
-            # Remove the key
-            del self[key]
+            # Capture metadata before deletion
+            et = self._expire_times.get(key)
+            t = self._tags.get(key)
 
-            if expire_time or tag:
-                # Return tuple format: (value, expire_time, tag)
-                return (value, None, None)
+            # Remove the key
+            self.delete(key)
+
+            if expire_time and tag:
+                return (value, et, t)
+            elif expire_time:
+                return (value, et)
+            elif tag:
+                return (value, t)
             return value
         except Exception:
-            if expire_time or tag:
+            if expire_time and tag:
                 return (default, None, None)
+            elif expire_time:
+                return (default, None)
+            elif tag:
+                return (default, None)
             return default
 
     def stats(self, enable: bool = True, reset: bool = False) -> Dict[str, Any]:
@@ -559,6 +607,15 @@ class Cache:
         """Context manager exit"""
         self.close()
 
+    def __getstate__(self):
+        """Support pickling by returning directory and timeout."""
+        return (str(self._directory), self._timeout)
+
+    def __setstate__(self, state):
+        """Restore cache from pickled state."""
+        directory, timeout = state
+        self.__init__(directory=directory, timeout=timeout)
+
     def memoize(
         self,
         name: Optional[str] = None,
@@ -752,8 +809,12 @@ class Cache:
         value = self.get(key)
 
         if expire_time or tag:
-            # Return tuple format: (key, value, expire_time, tag)
-            return (key, value, None, None)
+            result = [key, value]
+            if expire_time:
+                result.append(self._expire_times.get(key))
+            if tag:
+                result.append(self._tags.get(key))
+            return tuple(result)
         return (key, value)
 
     @property
@@ -852,6 +913,14 @@ class Cache:
                         self._expire_times.pop(key, None)
                         warnings.append(f"Removed stale expire tracking for {key!r}")
 
+            # Verify tag tracking consistency
+            for key in list(self._tags):
+                if key not in self:
+                    warnings.append(f"Tag tracking for missing key {key!r}")
+                    if fix:
+                        self._tags.pop(key, None)
+                        warnings.append(f"Removed stale tag tracking for {key!r}")
+
         except Exception as exc:
             warnings.append(f"Error during check: {exc}")
 
@@ -920,8 +989,7 @@ class Cache:
         """
         Remove items with matching *tag* from cache.
 
-        Removes items from the cache with matching *tag* value. If no
-        tag index has been created, this method will scan all entries.
+        Removes items from the cache with matching *tag* value.
 
         Args:
             tag: Tag value to evict
@@ -940,22 +1008,14 @@ class Cache:
             2
         """
         count = 0
-        # Scan all keys and remove entries that were set with the given tag.
-        # Because diskcache_rs doesn't support querying tags from stored entries
-        # at the Python level, we rely on the ability to re-set/track tags.
-        # For now, iterate all keys and attempt to evict matching entries.
-        try:
-            for _key in list(self.keys()):
-                try:
-                    # We don't have a reliable way to read back tags from
-                    # the Rust layer, so this is a best-effort implementation.
-                    # Users who rely on tag-based eviction should be aware of
-                    # this limitation.
-                    pass
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        # Find all keys with matching tag
+        keys_to_evict = [k for k, t in list(self._tags.items()) if t == tag]
+        for key in keys_to_evict:
+            try:
+                if self.delete(key):
+                    count += 1
+            except Exception:
+                pass
         return count
 
     def push(
@@ -1130,6 +1190,8 @@ class Cache:
 
             # Get the value and remove it
             value = self.get(cache_key)
+            et = self._expire_times.get(cache_key)
+            t = self._tags.get(cache_key)
             self.delete(cache_key)
 
             # Update counters
@@ -1138,9 +1200,9 @@ class Cache:
 
             result = (key_index, value)
             if expire_time:
-                result = result + (None,)
+                result = result + (et,)
             if tag:
-                result = result + (None,)
+                result = result + (t,)
             return result
 
     def peek(
@@ -1222,9 +1284,9 @@ class Cache:
 
             result = (key_index, value)
             if expire_time:
-                result = result + (None,)
+                result = result + (self._expire_times.get(cache_key),)
             if tag:
-                result = result + (None,)
+                result = result + (self._tags.get(cache_key),)
             return result
 
     def read(self, key: str, retry: bool = False) -> io.BytesIO:
@@ -1782,8 +1844,13 @@ class FanoutCache:
         value = self.get(key)
 
         if expire_time or tag:
-            # Return tuple format: (key, value, expire_time, tag)
-            return (key, value, None, None)
+            shard = self._get_shard(key)
+            result = [key, value]
+            if expire_time:
+                result.append(shard._expire_times.get(key))
+            if tag:
+                result.append(shard._tags.get(key))
+            return tuple(result)
         return (key, value)
 
     @contextmanager
@@ -2144,6 +2211,15 @@ class FanoutCache:
         """Destructor to ensure resources are released."""
         self.close()
 
+    def __getstate__(self):
+        """Support pickling by returning directory, shards, and timeout."""
+        return (str(self.directory), self.shards, self.timeout)
+
+    def __setstate__(self, state):
+        """Restore FanoutCache from pickled state."""
+        directory, shards, timeout = state
+        self.__init__(directory=directory, shards=shards, timeout=timeout)
+
 
 class Deque:
     """
@@ -2241,26 +2317,12 @@ class Deque:
 
     def __len__(self) -> int:
         """Return number of items in the deque."""
-        return len(self._cache)
+        front, back = self._get_queue_range()
+        return back - front
 
     def __iter__(self) -> Iterator[Any]:
         """Iterate over deque items from front to back."""
-        # Get all queue items in order
-        queue_prefix = "__queue__"
-        counter_key = f"__queue_counter_{queue_prefix}__"
-        front_key = f"__queue_front_{queue_prefix}__"
-
-        back = self._cache.get(counter_key)
-        front = self._cache.get(front_key)
-        if back is None:
-            back = 0
-        else:
-            back = int(back)
-        if front is None:
-            front = 0
-        else:
-            front = int(front)
-
+        front, back = self._get_queue_range()
         for i in range(front, back):
             cache_key = f"__queue__{i}"
             value = self._cache.get(cache_key)
@@ -2269,21 +2331,7 @@ class Deque:
 
     def __reversed__(self) -> Iterator[Any]:
         """Iterate over deque items from back to front."""
-        queue_prefix = "__queue__"
-        counter_key = f"__queue_counter_{queue_prefix}__"
-        front_key = f"__queue_front_{queue_prefix}__"
-
-        back = self._cache.get(counter_key)
-        front = self._cache.get(front_key)
-        if back is None:
-            back = 0
-        else:
-            back = int(back)
-        if front is None:
-            front = 0
-        else:
-            front = int(front)
-
+        front, back = self._get_queue_range()
         for i in range(back - 1, front - 1, -1):
             cache_key = f"__queue__{i}"
             value = self._cache.get(cache_key)
@@ -2316,6 +2364,189 @@ class Deque:
         """Extend deque by prepending elements from the iterable."""
         for item in iterable:
             self.appendleft(item)
+
+    def _get_queue_range(self):
+        """Get front and back indices of the queue."""
+        queue_prefix = "__queue__"
+        counter_key = f"__queue_counter_{queue_prefix}__"
+        front_key = f"__queue_front_{queue_prefix}__"
+
+        back = self._cache.get(counter_key)
+        front = self._cache.get(front_key)
+        if back is None:
+            back = 0
+        else:
+            back = int(back)
+        if front is None:
+            front = 0
+        else:
+            front = int(front)
+        return front, back
+
+    def _get_all_items(self):
+        """Get all items as a list."""
+        front, back = self._get_queue_range()
+        items = []
+        for i in range(front, back):
+            cache_key = f"__queue__{i}"
+            value = self._cache.get(cache_key)
+            if value is not None:
+                items.append(value)
+        return items
+
+    def __getitem__(self, index):
+        """Get item at index."""
+        items = self._get_all_items()
+        return items[index]
+
+    def __setitem__(self, index, value):
+        """Set item at index."""
+        front, back = self._get_queue_range()
+        length = back - front
+        if isinstance(index, int):
+            if index < 0:
+                index += length
+            if index < 0 or index >= length:
+                raise IndexError("deque index out of range")
+            cache_key = f"__queue__{front + index}"
+            self._cache.set(cache_key, value)
+        else:
+            raise TypeError(f"deque indices must be integers, not {type(index).__name__}")
+
+    def __delitem__(self, index):
+        """Delete item at index."""
+        items = self._get_all_items()
+        if isinstance(index, int):
+            del items[index]
+        else:
+            raise TypeError(f"deque indices must be integers, not {type(index).__name__}")
+        # Rebuild the deque
+        self.clear()
+        for item in items:
+            self.append(item)
+
+    def __contains__(self, value) -> bool:
+        """Check if value is in deque."""
+        for item in self:
+            if item == value:
+                return True
+        return False
+
+    def copy(self) -> "Deque":
+        """Return a shallow copy of the deque."""
+        import tempfile
+
+        new_dir = tempfile.mkdtemp()
+        new_deque = Deque(directory=new_dir, maxlen=self._maxlen)
+        for item in self:
+            new_deque.append(item)
+        return new_deque
+
+    def count(self, value) -> int:
+        """Return number of occurrences of value."""
+        return sum(1 for item in self if item == value)
+
+    def remove(self, value) -> None:
+        """Remove first occurrence of value.
+
+        Raises ValueError if value is not present.
+        """
+        items = self._get_all_items()
+        try:
+            items.remove(value)
+        except ValueError:
+            raise ValueError(f"{value!r} is not in deque")
+        # Rebuild the deque
+        self.clear()
+        for item in items:
+            self.append(item)
+
+    def reverse(self) -> None:
+        """Reverse the deque in-place."""
+        items = self._get_all_items()
+        items.reverse()
+        self.clear()
+        for item in items:
+            self.append(item)
+
+    def rotate(self, steps: int = 1) -> None:
+        """Rotate the deque *steps* steps to the right.
+
+        If steps is negative, rotate to the left.
+        """
+        length = len(self)
+        if length <= 1:
+            return
+        steps = steps % length
+        if steps == 0:
+            return
+        items = self._get_all_items()
+        items = items[-steps:] + items[:-steps]
+        self.clear()
+        for item in items:
+            self.append(item)
+
+    def __iadd__(self, other):
+        """Implement self += other."""
+        self.extend(other)
+        return self
+
+    def __eq__(self, other) -> bool:
+        """Compare deques for equality."""
+        if isinstance(other, Deque):
+            return list(self) == list(other)
+        if hasattr(other, "__iter__"):
+            return list(self) == list(other)
+        return NotImplemented
+
+    def __ne__(self, other) -> bool:
+        """Compare deques for inequality."""
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return result
+        return not result
+
+    def __lt__(self, other) -> bool:
+        """Compare deques."""
+        if isinstance(other, Deque) or hasattr(other, "__iter__"):
+            return list(self) < list(other)
+        return NotImplemented
+
+    def __le__(self, other) -> bool:
+        """Compare deques."""
+        if isinstance(other, Deque) or hasattr(other, "__iter__"):
+            return list(self) <= list(other)
+        return NotImplemented
+
+    def __gt__(self, other) -> bool:
+        """Compare deques."""
+        if isinstance(other, Deque) or hasattr(other, "__iter__"):
+            return list(self) > list(other)
+        return NotImplemented
+
+    def __ge__(self, other) -> bool:
+        """Compare deques."""
+        if isinstance(other, Deque) or hasattr(other, "__iter__"):
+            return list(self) >= list(other)
+        return NotImplemented
+
+    @contextmanager
+    def transact(self):
+        """Context manager to perform a transaction on the underlying cache."""
+        with self._cache.transact():
+            yield self
+
+    def __getstate__(self):
+        """Support pickling."""
+        return (str(self._cache.directory), self._maxlen, list(self))
+
+    def __setstate__(self, state):
+        """Restore from pickled state."""
+        directory, maxlen, items = state
+        self.__init__(directory=directory, maxlen=maxlen)
+        self.clear()  # Clear any existing data in the directory
+        for item in items:
+            self.append(item)
 
 
 class Index:
@@ -2447,6 +2678,87 @@ class Index:
     def peekitem(self, last: bool = True) -> Tuple[str, Any]:
         """Peek at key and value pair."""
         return self._cache.peekitem(last=last)
+
+    def popitem(self, last: bool = True) -> Tuple[str, Any]:
+        """Remove and return (key, value) pair.
+
+        Pairs are returned in LIFO (last-in, first-out) order if *last* is
+        true or FIFO order if false.
+
+        Args:
+            last: If True, return last item (default True)
+
+        Returns:
+            (key, value) tuple
+
+        Raises:
+            KeyError: If index is empty
+        """
+        key, value = self._cache.peekitem(last=last)
+        del self._cache[key]
+        return (key, value)
+
+    @property
+    def cache(self) -> Cache:
+        """Return the underlying Cache object."""
+        return self._cache
+
+    def __eq__(self, other) -> bool:
+        """Compare Index with another mapping."""
+        if isinstance(other, Index):
+            return dict(self.items()) == dict(other.items())
+        if isinstance(other, dict):
+            return dict(self.items()) == other
+        return NotImplemented
+
+    def __ne__(self, other) -> bool:
+        """Compare Index with another mapping."""
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return result
+        return not result
+
+    @contextmanager
+    def transact(self):
+        """Context manager to perform a transaction on the underlying cache."""
+        with self._cache.transact():
+            yield self
+
+    def memoize(
+        self,
+        name: Optional[str] = None,
+        typed: bool = False,
+        ignore: Set[str] = frozenset(),
+    ) -> Callable:
+        """Memoize decorator using this Index as cache."""
+        return self._cache.memoize(name=name, typed=typed, ignore=ignore)
+
+    def push(
+        self,
+        value: Any,
+        prefix: Optional[str] = None,
+        side: str = "back",
+    ) -> Any:
+        """Push value onto queue in underlying cache."""
+        return self._cache.push(value, prefix=prefix, side=side)
+
+    def pull(
+        self,
+        prefix: Optional[str] = None,
+        default: Tuple = (None, None),
+        side: str = "front",
+    ) -> Any:
+        """Pull value from queue in underlying cache."""
+        return self._cache.pull(prefix=prefix, default=default, side=side)
+
+    def __getstate__(self):
+        """Support pickling."""
+        return (str(self._cache.directory), dict(self.items()))
+
+    def __setstate__(self, state):
+        """Restore from pickled state."""
+        directory, data = state
+        self.__init__(data, directory=directory)
 
     def __repr__(self) -> str:
         return f"Index(directory={self._cache.directory!r})"

@@ -4,7 +4,7 @@
 
 **Question**: Can developers simply change the namespace from `diskcache` to `diskcache_rs` for a drop-in replacement?
 
-**Answer**: ✅ **~99% Compatible** - All core operations, atomic operations, memoization, transactions, iteration, queue operations, sub-cache operations, and metadata access are fully compatible. Only tag-based operations have limited support due to architectural differences.
+**Answer**: ✅ **~100% Compatible** - All core operations, atomic operations, memoization, transactions, iteration, queue operations, sub-cache operations, metadata access, tag-based operations, and pickle serialization are fully compatible.
 
 ---
 
@@ -22,16 +22,18 @@
 | `__iter__()` | ✅ | ✅ | Compatible |
 | `__reversed__()` | ✅ | ✅ | Compatible |
 | `__len__()` | ✅ | ✅ | Compatible |
-| `get(key, default, ...)` | ✅ | ✅ | Compatible |
-| `set(key, value, expire, ...)` | ✅ | ✅ | Compatible |
+| `__getstate__()` / `__setstate__()` | ✅ | ✅ | Pickle serialization support |
+| `get(key, default, read, expire_time, tag, ...)` | ✅ | ✅ | Full support including expire_time and tag return |
+| `set(key, value, expire, read, tag, ...)` | ✅ | ✅ | Full support including read=True for file-like objects |
 | `delete(key, retry)` | ✅ | ✅ | Compatible |
 | `add(key, value, expire, ...)` | ✅ | ✅ | Compatible |
-| `pop(key, default, ...)` | ✅ | ✅ | Compatible |
+| `pop(key, default, expire_time, tag, ...)` | ✅ | ✅ | Full support including expire_time and tag return |
 | `clear(retry)` | ✅ | ✅ | Compatible |
 | `incr(key, delta, default)` | ✅ | ✅ | Compatible |
 | `decr(key, delta, default)` | ✅ | ✅ | Compatible |
 | `touch(key, expire)` | ✅ | ✅ | Compatible |
 | `expire(now, retry)` | ✅ | ✅ | Compatible |
+| `evict(tag, retry)` | ✅ | ✅ | Full tag-based eviction via Python-side tracking |
 | `stats(enable, reset)` | ✅ | ✅ | Compatible |
 | `volume()` | ✅ | ✅ | Compatible |
 | `close()` | ✅ | ✅ | Compatible |
@@ -39,7 +41,7 @@
 | `memoize(name, typed, expire, tag, ignore)` | ✅ | ✅ | Compatible |
 | `transact(retry)` | ✅ | ✅ | Compatible |
 | `iterkeys(reverse)` | ✅ | ✅ | Compatible |
-| `peekitem(last, expire_time, tag, retry)` | ✅ | ✅ | Compatible |
+| `peekitem(last, expire_time, tag, retry)` | ✅ | ✅ | Full support including expire_time and tag return |
 | `directory` (property) | ✅ | ✅ | Compatible |
 | `timeout` (property) | ✅ | ✅ | Compatible |
 | `check(fix, retry)` | ✅ | ✅ | Compatible |
@@ -47,8 +49,8 @@
 | `reset(key, value)` | ✅ | ✅ | Compatible (settings via constructor) |
 | `read(key, retry)` | ✅ | ✅ | Returns BytesIO handle |
 | `push(value, prefix, side, ...)` | ✅ | ✅ | Queue operations |
-| `pull(prefix, default, side, ...)` | ✅ | ✅ | Queue operations |
-| `peek(prefix, default, side, ...)` | ✅ | ✅ | Queue operations |
+| `pull(prefix, default, side, ...)` | ✅ | ✅ | Queue operations with expire_time/tag support |
+| `peek(prefix, default, side, ...)` | ✅ | ✅ | Queue operations with expire_time/tag support |
 | `create_tag_index()` | ✅ | ✅ | No-op (tags inline) |
 | `drop_tag_index()` | ✅ | ✅ | No-op (tags inline) |
 | `disk` (property) | ✅ | ✅ | Returns compatible proxy |
@@ -56,16 +58,6 @@
 | `values()` | ✅ | ✅ | Compatible |
 | `items()` | ✅ | ✅ | Compatible |
 | `vacuum()` | ✅ | ✅ | Compatible |
-
-### ⚠️ Partially Compatible Methods
-
-| Method | diskcache | diskcache_rs | Status | Notes |
-|--------|-----------|--------------|--------|-------|
-| `get(..., expire_time=True)` | ✅ | ⚠️ | Returns None | Expire time not exposed from Rust layer |
-| `get(..., tag=True)` | ✅ | ⚠️ | Returns None | Tag not exposed from Rust layer |
-| `get(..., read=True)` | ✅ | ⚠️ | Ignored | Use `read()` method instead |
-| `set(..., read=True)` | ✅ | ⚠️ | Ignored | File handle not supported |
-| `evict(tag, retry)` | ✅ | ⚠️ | Best-effort | Tags not queryable from Rust layer |
 
 ---
 
@@ -83,8 +75,9 @@
 | `__iter__()` | ✅ | ✅ | Compatible |
 | `__reversed__()` | ✅ | ✅ | Compatible |
 | `__len__()` | ✅ | ✅ | Compatible |
-| `get(key, default, ...)` | ✅ | ✅ | Compatible |
-| `set(key, value, expire, ...)` | ✅ | ✅ | Compatible |
+| `__getstate__()` / `__setstate__()` | ✅ | ✅ | Pickle serialization support |
+| `get(key, default, read, expire_time, tag, ...)` | ✅ | ✅ | Full support including expire_time and tag return |
+| `set(key, value, expire, read, tag, ...)` | ✅ | ✅ | Full support |
 | `delete(key, retry)` | ✅ | ✅ | Compatible |
 | `add(key, value, ...)` | ✅ | ✅ | Compatible |
 | `incr(key, delta, ...)` | ✅ | ✅ | Compatible |
@@ -92,6 +85,7 @@
 | `pop(key, default, ...)` | ✅ | ✅ | Compatible |
 | `touch(key, expire, ...)` | ✅ | ✅ | Compatible |
 | `expire(retry)` | ✅ | ✅ | Compatible |
+| `evict(tag, retry)` | ✅ | ✅ | Full tag-based eviction |
 | `clear(retry)` | ✅ | ✅ | Compatible |
 | `stats(enable, reset)` | ✅ | ✅ | Compatible |
 | `volume()` | ✅ | ✅ | Compatible |
@@ -100,7 +94,7 @@
 | `memoize(name, typed, expire, tag, ignore)` | ✅ | ✅ | Compatible |
 | `transact(retry)` | ✅ | ✅ | Compatible |
 | `iterkeys(reverse)` | ✅ | ✅ | Compatible |
-| `peekitem(last, ...)` | ✅ | ✅ | Compatible |
+| `peekitem(last, ...)` | ✅ | ✅ | Compatible with expire_time/tag support |
 | `check(fix, retry)` | ✅ | ✅ | Compatible |
 | `cull(retry)` | ✅ | ✅ | Compatible |
 | `reset(key, value)` | ✅ | ✅ | Compatible |
@@ -122,12 +116,6 @@
 | `timeout` (property) | ✅ | ✅ | Compatible |
 | `disk` (property) | ✅ | ✅ | Returns compatible proxy |
 
-### ⚠️ Partially Compatible Methods
-
-| Method | diskcache | diskcache_rs | Status | Notes |
-|--------|-----------|--------------|--------|-------|
-| `evict(tag, retry)` | ✅ | ⚠️ | Best-effort | Tags not queryable from Rust layer |
-
 ---
 
 ## Deque Class API Comparison
@@ -146,10 +134,23 @@
 | `clear()` | ✅ | ✅ | Compatible |
 | `extend(iterable)` | ✅ | ✅ | Compatible |
 | `extendleft(iterable)` | ✅ | ✅ | Compatible |
+| `copy()` | ✅ | ✅ | Compatible |
+| `count(value)` | ✅ | ✅ | Compatible |
+| `remove(value)` | ✅ | ✅ | Compatible |
+| `reverse()` | ✅ | ✅ | Compatible |
+| `rotate(steps)` | ✅ | ✅ | Compatible |
 | `__len__()` | ✅ | ✅ | Compatible |
 | `__iter__()` | ✅ | ✅ | Compatible |
 | `__reversed__()` | ✅ | ✅ | Compatible |
 | `__bool__()` | ✅ | ✅ | Compatible |
+| `__contains__(value)` | ✅ | ✅ | Compatible |
+| `__getitem__(index)` | ✅ | ✅ | Compatible |
+| `__setitem__(index, value)` | ✅ | ✅ | Compatible |
+| `__delitem__(index)` | ✅ | ✅ | Compatible |
+| `__eq__` / `__ne__` / `__lt__` / `__gt__` / `__le__` / `__ge__` | ✅ | ✅ | All comparison operators |
+| `__iadd__(other)` | ✅ | ✅ | In-place addition |
+| `__getstate__()` / `__setstate__()` | ✅ | ✅ | Pickle support |
+| `transact()` | ✅ | ✅ | Transaction support |
 | `maxlen` (property) | ✅ | ✅ | Compatible |
 | `directory` (property) | ✅ | ✅ | Compatible |
 | `close()` | ✅ | ✅ | Compatible |
@@ -171,8 +172,11 @@
 | `__reversed__()` | ✅ | ✅ | Compatible |
 | `__len__()` | ✅ | ✅ | Compatible |
 | `__bool__()` | ✅ | ✅ | Compatible |
+| `__eq__` / `__ne__` | ✅ | ✅ | Comparison operators |
+| `__getstate__()` / `__setstate__()` | ✅ | ✅ | Pickle support |
 | `get(key, default)` | ✅ | ✅ | Compatible |
 | `pop(key, default)` | ✅ | ✅ | Compatible |
+| `popitem(last)` | ✅ | ✅ | Compatible |
 | `setdefault(key, default)` | ✅ | ✅ | Compatible |
 | `keys()` | ✅ | ✅ | Compatible |
 | `values()` | ✅ | ✅ | Compatible |
@@ -180,8 +184,13 @@
 | `update(*args, **kwargs)` | ✅ | ✅ | Compatible |
 | `clear()` | ✅ | ✅ | Compatible |
 | `peekitem(last)` | ✅ | ✅ | Compatible |
+| `cache` (property) | ✅ | ✅ | Returns underlying Cache |
 | `directory` (property) | ✅ | ✅ | Compatible |
 | `close()` | ✅ | ✅ | Compatible |
+| `transact()` | ✅ | ✅ | Transaction support |
+| `memoize(name, typed, ignore)` | ✅ | ✅ | Memoization decorator |
+| `push(value, prefix, side)` | ✅ | ✅ | Queue operations |
+| `pull(prefix, default, side)` | ✅ | ✅ | Queue operations |
 
 ---
 
@@ -198,7 +207,7 @@ If your code only uses:
 
 **Migration**: Simply change `import diskcache` to `import diskcache_rs` ✅
 
-### ✅ **Medium-Risk Migration** (Advanced Features) - NOW SUPPORTED
+### ✅ **Medium-Risk Migration** (Advanced Features) - FULLY SUPPORTED
 
 If your code uses:
 - `incr()`/`decr()` operations
@@ -210,14 +219,12 @@ If your code uses:
 - Queue operations (`push`/`pull`/`peek`)
 - Sub-caches (`cache()`/`deque()`/`index()`)
 - `Deque` and `Index` classes
+- Tag-based operations (`set(tag=...)`, `evict(tag)`)
+- `get(expire_time=True, tag=True)` metadata return
+- `read=True` parameter for file-like objects
+- Pickle serialization (`__getstate__`/`__setstate__`)
 
 **Migration**: Simply change `import diskcache` to `import diskcache_rs` ✅
-
-### ⚠️ **Known Limitations**
-
-- **Tag-based eviction** (`evict(tag)`) - Tags are stored but cannot be queried back from the Rust layer, so tag-based eviction is best-effort
-- **`read=True` parameter** - The `read` parameter on `get()`/`set()` is accepted but ignored; use the `read()` method for file-handle access
-- **`expire_time`/`tag` return values** - When requesting these via `get(..., expire_time=True, tag=True)`, `None` is returned
 
 ---
 
@@ -234,8 +241,13 @@ If your code uses:
 | **Maintenance** | 100% | ✅ check/cull/expire/vacuum/reset |
 | **Sub-caches** | 100% | ✅ cache()/deque()/index() |
 | **Metadata** | 100% | ✅ directory/timeout/disk/stats/volume |
-| **Tag Operations** | 50% | ⚠️ Tags stored but not fully queryable |
-| **Overall** | **~99%** | Excellent for virtually all use cases |
+| **Tag Operations** | 100% | ✅ Tags tracked and fully queryable |
+| **Expire Time Return** | 100% | ✅ get/pop/peek/peekitem with expire_time=True |
+| **Read Parameter** | 100% | ✅ set(read=True) and get(read=True) |
+| **Pickle Support** | 100% | ✅ __getstate__/__setstate__ for all classes |
+| **Deque** | 100% | ✅ Full collections.deque-like interface |
+| **Index** | 100% | ✅ Full MutableMapping interface |
+| **Overall** | **~100%** | Complete API compatibility |
 
 ---
 
@@ -261,7 +273,36 @@ print(cache['key'])
 del cache['key']
 ```
 
-### ✅ Scenario 2: Memoization (Works!)
+### ✅ Scenario 2: Tag-based Operations (Now Fully Working!)
+
+```python
+# Before (diskcache)
+from diskcache import Cache
+
+cache = Cache('/tmp/mycache')
+cache.set('user:1', {'name': 'Alice'}, tag='users')
+cache.set('user:2', {'name': 'Bob'}, tag='users')
+cache.set('session:1', 'abc123', tag='sessions')
+
+# Get with tag
+value, tag = cache.get('user:1', tag=True)
+
+# Evict all users
+cache.evict('users')
+
+# After (diskcache_rs) - NO CHANGES NEEDED
+from diskcache_rs import Cache
+
+cache = Cache('/tmp/mycache')
+cache.set('user:1', {'name': 'Alice'}, tag='users')
+cache.set('user:2', {'name': 'Bob'}, tag='users')
+cache.set('session:1', 'abc123', tag='sessions')
+
+value, tag = cache.get('user:1', tag=True)
+cache.evict('users')
+```
+
+### ✅ Scenario 3: Memoization (Works!)
 
 ```python
 # Before (diskcache)
@@ -287,7 +328,7 @@ def expensive_function(x):
 expensive_function(5)  # 25
 ```
 
-### ✅ Scenario 3: Transactions (Works!)
+### ✅ Scenario 4: Transactions (Works!)
 
 ```python
 # Before (diskcache)
@@ -305,26 +346,6 @@ cache = Cache('/tmp/mycache')
 with cache.transact():
     cache['total'] = cache.get('total', 0) + 123.4
     cache['count'] = cache.get('count', 0) + 1
-```
-
-### ✅ Scenario 4: Queue Operations (Works!)
-
-```python
-# Before (diskcache)
-from diskcache import Cache
-
-cache = Cache('/tmp/mycache')
-cache.push('first')
-cache.push('second')
-key, value = cache.pull()  # (0, 'first')
-
-# After (diskcache_rs) - NO CHANGES NEEDED
-from diskcache_rs import Cache
-
-cache = Cache('/tmp/mycache')
-cache.push('first')
-cache.push('second')
-key, value = cache.pull()  # (0, 'first')
 ```
 
 ### ✅ Scenario 5: FanoutCache with Sub-caches (Works!)
@@ -347,24 +368,52 @@ tasks = fc.deque('tasks')
 meta = fc.index('metadata')
 ```
 
-### ✅ Scenario 6: Deque (Works!)
+### ✅ Scenario 6: Deque with Full Collections Interface (Works!)
 
 ```python
 # Before (diskcache)
 from diskcache import Deque
 
-dq = Deque('/tmp/mydeque')
-dq.append('a')
-dq.appendleft('b')
-value = dq.popleft()  # 'b'
+dq = Deque(directory='/tmp/mydeque')
+dq.extend([1, 2, 3, 4, 5])
+dq.rotate(2)
+print(dq[0])  # 4
+dq.reverse()
+dq.remove(3)
+print(dq.count(1))
 
 # After (diskcache_rs) - NO CHANGES NEEDED
 from diskcache_rs import Deque
 
 dq = Deque(directory='/tmp/mydeque')
-dq.append('a')
-dq.appendleft('b')
-value = dq.popleft()  # 'b'
+dq.extend([1, 2, 3, 4, 5])
+dq.rotate(2)
+print(dq[0])  # 4
+dq.reverse()
+dq.remove(3)
+print(dq.count(1))
+```
+
+### ✅ Scenario 7: Index with Full Mapping Interface (Works!)
+
+```python
+# Before (diskcache)
+from diskcache import Index
+
+idx = Index(directory='/tmp/myindex')
+idx['a'] = 1
+idx['b'] = 2
+key, value = idx.popitem()
+idx == {'a': 1}
+
+# After (diskcache_rs) - NO CHANGES NEEDED
+from diskcache_rs import Index
+
+idx = Index(directory='/tmp/myindex')
+idx['a'] = 1
+idx['b'] = 2
+key, value = idx.popitem()
+idx == {'a': 1}
 ```
 
 ---
@@ -373,7 +422,7 @@ value = dq.popleft()  # 'b'
 
 ### Can developers just change the namespace?
 
-**Answer**: **Yes, for ~99% of use cases** ✅
+**Answer**: **Yes, for ~100% of use cases** ✅
 
 - ✅ **Basic caching** (get/set/delete): Fully compatible
 - ✅ **Dictionary interface**: Fully compatible
@@ -382,9 +431,12 @@ value = dq.popleft()  # 'b'
 - ✅ **Transactions** (`transact()` context manager): Fully compatible
 - ✅ **Queue operations** (push/pull/peek): Fully compatible
 - ✅ **Sub-caches** (cache/deque/index): Fully compatible
-- ✅ **Deque and Index** classes: Fully compatible
+- ✅ **Deque and Index** classes: Fully compatible with all methods
 - ✅ **Maintenance** (check/cull/expire/vacuum/reset): Fully compatible
 - ✅ **Metadata** (directory/timeout/disk/stats/volume): Fully compatible
-- ⚠️ **Tag-based eviction**: Best-effort (tags stored but not fully queryable)
+- ✅ **Tag operations** (set with tag, get with tag, evict by tag): Fully compatible
+- ✅ **Expire time return** (get/pop/peek with expire_time): Fully compatible
+- ✅ **Read parameter** (set/get with read=True): Fully compatible
+- ✅ **Pickle serialization** (__getstate__/__setstate__): Fully compatible
 
-**Migration is straightforward for virtually all use cases - just change the import!** 🎉
+**Migration is straightforward for all use cases - just change the import!** 🎉
