@@ -29,6 +29,39 @@ class TestBatchOperations:
         assert cache.get("beta") == {"nested": 2}
         assert cache.get("gamma") == b"bytes-value"
 
+    def test_set_many_accepts_iterators(self, temp_cache_dir):
+        """`set_many()` should accept generators without materializing dict input first."""
+        cache = Cache(temp_cache_dir)
+
+        stored = cache.set_many((("key_%d" % index, index) for index in range(4)))
+
+        assert stored == 4
+        assert cache.get("key_0") == 0
+        assert cache.get("key_3") == 3
+
+    def test_set_many_empty_input_is_a_no_op(self, temp_cache_dir):
+        """Empty batch writes should return zero and keep cache state unchanged."""
+        cache = Cache(temp_cache_dir)
+        cache.set("existing", "value")
+
+        stored = cache.set_many([])
+
+        assert stored == 0
+        assert cache.get("existing") == "value"
+        assert len(cache) == 1
+
+    def test_set_many_serialization_failure_preserves_existing_values(self, temp_cache_dir):
+        """Serialization failures should not partially mutate the cache."""
+        cache = Cache(temp_cache_dir)
+        cache.set("safe", "value")
+
+        stored = cache.set_many({"broken": lambda: None})
+
+        assert stored == 0
+        assert cache.get("safe") == "value"
+        assert cache.get("broken") is None
+
+
     def test_set_many_tracks_expire_and_tag(self, temp_cache_dir):
         """`set_many()` should keep expire and tag metadata consistent."""
         cache = Cache(temp_cache_dir)
