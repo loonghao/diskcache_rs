@@ -7,7 +7,7 @@ but implemented in Rust for better performance and network filesystem support.
 
 # Always use the Python wrapper for now
 # The Python wrapper will handle importing the Rust implementation
-from .cache import Cache, FanoutCache
+from .cache import Cache, Deque, FanoutCache, Index
 from .fast_cache import FastCache, FastFanoutCache
 from .pickle_cache import PickleCache, cache_object, clear_cache, get_cached_object
 
@@ -23,6 +23,8 @@ from ._diskcache_rs import __version__
 __all__ = [
     "Cache",
     "FanoutCache",
+    "Deque",
+    "Index",
     "PickleCache",
     "cache_object",
     "get_cached_object",
