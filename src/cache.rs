@@ -280,8 +280,6 @@ impl DiskCache {
         Ok(())
     }
 
-
-
     /// Delete a value from the cache
     pub fn delete(&self, key: &str) -> CacheResult<bool> {
         validate_key(key)?;
@@ -536,9 +534,6 @@ impl PyCache {
         self.cache.set_many(items, expire_time, tags)?;
         Ok(())
     }
-
-
-
 
     fn delete(&self, key: &str) -> PyResult<bool> {
         Ok(self.cache.delete(key)?)
@@ -880,4 +875,3 @@ mod tests {
         cache.close();
     }
 }
-

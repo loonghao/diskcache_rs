@@ -1004,8 +1004,6 @@ impl StorageBackend for OptimizedStorage {
         Ok(())
     }
 
-
-
     fn delete(&self, key: &str) -> CacheResult<bool> {
         let mut found = false;
 
