@@ -8,7 +8,6 @@ use crate::utils::{current_timestamp, validate_cache_config, validate_key, Cache
 use parking_lot::RwLock;
 use pyo3::prelude::*;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -770,10 +769,23 @@ impl RustFanoutCache {
 
 impl RustFanoutCache {
     fn get_shard(&self, key: &str) -> usize {
-        use std::collections::hash_map::DefaultHasher;
-
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        (hasher.finish() as usize) % self.shards
+        // Use BLAKE3 for deterministic hashing across process restarts.
+        // Rust's DefaultHasher (SipHash) uses a per-process random seed,
+        // which causes cache misses when keys are looked up in a different
+        // process than the one that stored them (issue #73).
+        let hash = blake3::hash(key.as_bytes());
+        let hash_bytes = hash.as_bytes();
+        // Use first 8 bytes of the BLAKE3 hash as a u64
+        let hash_value = u64::from_le_bytes([
+            hash_bytes[0],
+            hash_bytes[1],
+            hash_bytes[2],
+            hash_bytes[3],
+            hash_bytes[4],
+            hash_bytes[5],
+            hash_bytes[6],
+            hash_bytes[7],
+        ]);
+        (hash_value as usize) % self.shards
     }
 }
