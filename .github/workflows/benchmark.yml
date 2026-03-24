@@ -55,7 +55,7 @@ jobs:
           uv run python tests/benchmark_official.py -n 1000
 
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results-${{ github.sha }}
           path: benchmark_results.json
