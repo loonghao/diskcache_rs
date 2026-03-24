@@ -731,8 +731,8 @@ impl OptimizedStorage {
     }
 
     /// Compress data if it provides significant space savings
-
     fn compress_if_beneficial(&self, data: &[u8]) -> (Bytes, bool) {
+
         if !self.config.use_compression || data.len() < self.config.compression_threshold {
             return (Bytes::copy_from_slice(data), false);
         }
