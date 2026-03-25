@@ -97,10 +97,16 @@ bench:
     @echo "⚡ Running benchmarks..."
     uv run python -m pytest tests/ -v -k benchmark
 
+# Compare pickle bridge overhead
+bench-pickle:
+    @echo "⚡ Comparing pickle bridge overhead..."
+    uv run python benchmarks/pickle_bridge_comparison.py
+
 # Update dependencies
 update:
     @echo "⬆️  Updating dependencies..."
     uv sync --upgrade
+
 
 # Show project info
 info:
