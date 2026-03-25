@@ -4,6 +4,19 @@
 
 - sync Cargo.toml version with .cz.toml and update CHANGELOG for v0.4.0
 
+## [0.4.9](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.8...diskcache_rs-v0.4.9) (2026-03-25)
+
+
+### Bug Fixes
+
+* unblock batch writes and expand perf coverage ([e28f9b5](https://github.com/loonghao/diskcache_rs/commit/e28f9b574b4375b90b38fa92a4f759e0820692b9))
+* unblock batch writes and expand perf coverage ([d235250](https://github.com/loonghao/diskcache_rs/commit/d23525069ef524a92120f846104d7824a0a47fd5))
+
+
+### Performance Improvements
+
+* default to CPython pickle fast path ([#101](https://github.com/loonghao/diskcache_rs/issues/101)) ([0e78be8](https://github.com/loonghao/diskcache_rs/commit/0e78be82eb48a05b642e6732da37543210fab59c))
+
 ## [0.4.8](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.7...diskcache_rs-v0.4.8) (2026-03-24)
 
 
