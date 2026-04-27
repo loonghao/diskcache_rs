@@ -55,7 +55,7 @@ crossbeam = "0.8"
 # Cross-platform file locking for NFS support
 fs4 = "0.13"
 
-lru = "0.17"
+lru = "0.18"
 
 # Embedded key-value database for persistent index
 redb = "4.0"
