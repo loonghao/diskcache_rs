@@ -53,7 +53,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.18", features = ["v4", "serde"] }
 crossbeam = "0.8"
 # Cross-platform file locking for NFS support
-fs4 = "0.13"
+fs4 = "1.0"
 
 lru = "0.17"
 
