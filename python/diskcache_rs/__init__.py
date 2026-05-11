@@ -46,11 +46,7 @@ except ImportError:
 # Version is exported from Rust core module
 from ._diskcache_rs import __version__
 
-# Optional: DjangoCache (only available if Django is installed and configured)
-try:
-    from .djangocache import DjangoCache
-except Exception:
-    pass
+from .djangocache import DjangoCache
 
 __all__ = [
     # Core cache classes
@@ -86,6 +82,7 @@ __all__ = [
     "clear_cache",
     "FastCache",
     "FastFanoutCache",
+    "DjangoCache",
     "rust_pickle_dumps",
     "rust_pickle_loads",
 ]
