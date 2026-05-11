@@ -6,7 +6,7 @@ use dashmap::DashMap;
 use memmap2::{Mmap, MmapOptions};
 use parking_lot::{Mutex, RwLock};
 
-use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
@@ -15,10 +15,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-// Define redb table for cache index
-const INDEX_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("cache_index");
+const INDEX_TABLE_SQL: &str =
+    "CREATE TABLE IF NOT EXISTS cache_index (key TEXT PRIMARY KEY, value BLOB NOT NULL)";
 
 /// High-performance optimized storage backend with multiple performance enhancements:
 /// - Memory-mapped files for large data
@@ -27,7 +28,7 @@ const INDEX_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("cache_in
 /// - Object pooling for buffer reuse
 /// - Adaptive compression
 /// - Fine-grained locking
-/// - Persistent index using redb for ACID guarantees
+/// - Persistent index using SQLite for cross-process coordination
 pub struct OptimizedStorage {
     directory: PathBuf,
 
@@ -36,8 +37,7 @@ pub struct OptimizedStorage {
     warm_cache: Arc<DashMap<String, MmapEntry>>, // Memory-mapped files
     cold_index: Arc<RwLock<DashMap<String, FileInfo>>>, // File metadata (in-memory cache)
 
-    // Persistent index database (Option to allow explicit closing)
-    index_db: Arc<RwLock<Option<Database>>>, // redb database for persistent index
+    index_db_path: PathBuf,
 
     // Performance optimizations
     #[allow(dead_code)]
@@ -320,25 +320,8 @@ impl OptimizedStorage {
         let data_dir = directory.join("data");
         std::fs::create_dir_all(&data_dir).map_err(CacheError::Io)?;
 
-        // Initialize redb database for persistent index
-        let index_db_path = directory.join("index.redb");
-
-        // Use create if file doesn't exist, otherwise open
-        let index_db = if index_db_path.exists() {
-            Database::open(&index_db_path).map_err(|e| {
-                CacheError::Io(std::io::Error::other(format!(
-                    "Failed to open redb database: {}",
-                    e
-                )))
-            })?
-        } else {
-            Database::create(&index_db_path).map_err(|e| {
-                CacheError::Io(std::io::Error::other(format!(
-                    "Failed to create redb database: {}",
-                    e
-                )))
-            })?
-        };
+        let index_db_path = directory.join("index.sqlite3");
+        Self::initialize_index_connection_at(&index_db_path)?;
 
         let write_batcher = Arc::new(WriteBatcher::new(data_dir.clone(), config.batch_size));
 
@@ -347,76 +330,73 @@ impl OptimizedStorage {
             hot_cache: Arc::new(DashMap::with_capacity(config.hot_cache_size)),
             warm_cache: Arc::new(DashMap::with_capacity(config.warm_cache_size)),
             cold_index: Arc::new(RwLock::new(DashMap::new())),
-            index_db: Arc::new(RwLock::new(Some(index_db))),
+            index_db_path,
             buffer_pool: Arc::new(BufferPool::new()),
             write_batcher,
             config,
             stats: Arc::new(StorageStats::default()),
         };
 
-        // Load existing index from redb
+        // Load existing index from SQLite
         storage.rebuild_index_from_disk()?;
 
         Ok(storage)
     }
 
-    /// Rebuild the cold index by loading from redb database
+    fn sqlite_error(context: &str, error: rusqlite::Error) -> CacheError {
+        CacheError::Io(std::io::Error::other(format!("{}: {}", context, error)))
+    }
+
+    fn initialize_index_connection_at(path: &Path) -> CacheResult<()> {
+        let conn = Self::open_index_connection_at(path)?;
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(|e| Self::sqlite_error("Failed to enable SQLite WAL", e))?;
+        conn.pragma_update(None, "synchronous", "NORMAL")
+            .map_err(|e| Self::sqlite_error("Failed to configure SQLite synchronous mode", e))?;
+        conn.execute(INDEX_TABLE_SQL, [])
+            .map_err(|e| Self::sqlite_error("Failed to create SQLite index table", e))?;
+        Ok(())
+    }
+
+    fn open_index_connection_at(path: &Path) -> CacheResult<Connection> {
+        let conn = Connection::open(path)
+            .map_err(|e| Self::sqlite_error("Failed to open SQLite index", e))?;
+        conn.busy_timeout(Duration::from_secs(60))
+            .map_err(|e| Self::sqlite_error("Failed to set SQLite busy timeout", e))?;
+        Ok(conn)
+    }
+
+    fn open_index_connection(&self) -> CacheResult<Connection> {
+        Self::open_index_connection_at(&self.index_db_path)
+    }
+
+    /// Rebuild the cold index by loading from SQLite database
     fn rebuild_index_from_disk(&mut self) -> CacheResult<()> {
-        let db_guard = self.index_db.read();
-        let db = match db_guard.as_ref() {
-            Some(db) => db,
-            None => return Ok(()), // Database is closed
-        };
-
-        let read_txn = db.begin_read().map_err(|e| {
-            CacheError::Io(std::io::Error::other(format!(
-                "Failed to begin redb read transaction: {}",
-                e
-            )))
-        })?;
-
-        // Try to open the table (it might not exist on first run)
-        let table = match read_txn.open_table(INDEX_TABLE) {
-            Ok(table) => table,
-            Err(_) => {
-                // Table doesn't exist yet, this is a new database
-                return Ok(());
-            }
-        };
+        let conn = self.open_index_connection()?;
+        let mut stmt = conn
+            .prepare("SELECT key, value FROM cache_index")
+            .map_err(|e| Self::sqlite_error("Failed to query SQLite index", e))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+            })
+            .map_err(|e| Self::sqlite_error("Failed to iterate SQLite index", e))?;
 
         let index = self.cold_index.write();
         let mut loaded_count = 0;
         let mut skipped_count = 0;
 
-        // Iterate over all entries in the redb table
-        let iter = table.iter().map_err(|e| {
-            CacheError::Io(std::io::Error::other(format!(
-                "Failed to iterate redb table: {}",
-                e
-            )))
-        })?;
-
-        for entry in iter {
-            let (key, value) = entry.map_err(|e| {
-                CacheError::Io(std::io::Error::other(format!(
-                    "Failed to read redb entry: {}",
-                    e
-                )))
-            })?;
-
-            let key = key.value().to_string();
-            let value_bytes = value.value();
-
-            // Deserialize FileInfo from bytes
+        for row in rows {
+            let (key, value_bytes) =
+                row.map_err(|e| Self::sqlite_error("Failed to read SQLite index row", e))?;
             let (file_info, decoded_len): (FileInfo, usize) =
-                bincode::decode_from_slice(value_bytes, bincode::config::standard()).map_err(
-                    |e| {
+                bincode::decode_from_slice(value_bytes.as_slice(), bincode::config::standard())
+                    .map_err(|e| {
                         CacheError::Io(std::io::Error::other(format!(
                             "Failed to deserialize FileInfo: {}",
                             e
                         )))
-                    },
-                )?;
+                    })?;
 
             if file_info.path.to_string_lossy().starts_with("memory://") {
                 if value_bytes.len() > decoded_len {
@@ -429,7 +409,6 @@ impl OptimizedStorage {
                 continue;
             }
 
-            // Verify file still exists before adding to index
             if file_info.path.exists() {
                 index.insert(key, file_info);
                 loaded_count += 1;
@@ -439,7 +418,7 @@ impl OptimizedStorage {
         }
 
         tracing::debug!(
-            "Loaded {} entries from redb index, skipped {} missing files",
+            "Loaded {} entries from SQLite index, skipped {} missing files",
             loaded_count,
             skipped_count
         );
@@ -447,46 +426,27 @@ impl OptimizedStorage {
         Ok(())
     }
 
-    /// Close the redb database explicitly
-    /// This releases the file lock and allows other processes to open the database
+    /// Close background resources and flush in-memory data.
     pub fn close_db(&self) {
         self.write_batcher.shutdown();
 
-        // Flush all in-memory data to disk before closing
         if let Err(e) = self.flush_memory_caches() {
             tracing::error!("Failed to flush memory caches during close: {}", e);
         }
-
-        let mut db_guard = self.index_db.write();
-        *db_guard = None;
-        tracing::debug!("Closed redb database");
     }
 
     /// Flush all in-memory caches (hot_cache and warm_cache) to disk
     /// This ensures data persistence when closing the cache
     fn flush_memory_caches(&self) -> CacheResult<()> {
-        let db_guard = self.index_db.read();
-        let db = match db_guard.as_ref() {
-            Some(db) => db,
-            None => return Ok(()), // Database already closed
-        };
-
-        // Collect all entries from hot_cache and warm_cache
         let mut entries_to_persist = Vec::new();
 
-        // Collect from hot_cache
         for entry in self.hot_cache.iter() {
-            let key = entry.key().clone();
-            let data = entry.value().clone();
-            entries_to_persist.push((key, data));
+            entries_to_persist.push((entry.key().clone(), entry.value().clone()));
         }
 
-        // Collect from warm_cache (convert MmapEntry to Bytes)
         for entry in self.warm_cache.iter() {
-            let key = entry.key().clone();
-            let mmap_entry = entry.value();
-            let data = Bytes::copy_from_slice(&mmap_entry.mmap[..mmap_entry.size]);
-            entries_to_persist.push((key, data));
+            let data = Bytes::copy_from_slice(&entry.value().mmap[..entry.value().size]);
+            entries_to_persist.push((entry.key().clone(), data));
         }
 
         if entries_to_persist.is_empty() {
@@ -494,128 +454,63 @@ impl OptimizedStorage {
         }
 
         tracing::debug!(
-            "Flushing {} entries from memory caches to disk",
+            "Flushing {} entries from memory caches to SQLite index",
             entries_to_persist.len()
         );
 
-        // Write all entries to redb in a single transaction
-        let write_txn = db.begin_write().map_err(|e| {
-            CacheError::Io(std::io::Error::other(format!(
-                "Failed to begin redb write transaction: {}",
-                e
-            )))
-        })?;
-
-        {
-            let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
-                CacheError::Io(std::io::Error::other(format!(
-                    "Failed to open redb table: {}",
-                    e
-                )))
-            })?;
-
-            for (key, data) in entries_to_persist {
-                // Create a FileInfo for in-memory data
-                // We'll store the data inline in the FileInfo structure
-                let file_info = FileInfo {
-                    path: PathBuf::from(format!("memory://{}", key)),
-                    size: data.len() as u64,
-                    created_at: Self::get_current_timestamp(),
-                    compressed: false,
-                };
-
-                // Serialize FileInfo + data together
-                let mut value_bytes =
-                    bincode::encode_to_vec(&file_info, bincode::config::standard()).map_err(
-                        |e| {
-                            CacheError::Io(std::io::Error::other(format!(
-                                "Failed to serialize FileInfo: {}",
-                                e
-                            )))
-                        },
-                    )?;
-
-                // Append the actual data after FileInfo
-                value_bytes.extend_from_slice(&data);
-
-                table
-                    .insert(key.as_str(), value_bytes.as_slice())
-                    .map_err(|e| {
-                        CacheError::Io(std::io::Error::other(format!(
-                            "Failed to insert into redb: {}",
-                            e
-                        )))
-                    })?;
-            }
-        }
-
-        write_txn.commit().map_err(|e| {
-            CacheError::Io(std::io::Error::other(format!(
-                "Failed to commit redb transaction: {}",
-                e
-            )))
-        })?;
-
-        tracing::debug!("Successfully flushed memory caches to disk");
+        self.persist_inline_entries(&entries_to_persist)?;
+        tracing::debug!("Successfully flushed memory caches to SQLite index");
         Ok(())
     }
 
-    /// Persist the cold index to redb database with ACID guarantees
+    /// Persist the cold index to SQLite.
     fn persist_index(&self) -> CacheResult<()> {
-        let db_guard = self.index_db.read();
-        let db = match db_guard.as_ref() {
-            Some(db) => db,
-            None => return Ok(()), // Database is closed
+        let index = self.cold_index.read();
+        let file_infos: Vec<(String, FileInfo)> = index
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
+        drop(index);
+        self.persist_file_infos(&file_infos)
+    }
+
+    fn encode_inline_entry(key: &str, data: &[u8]) -> CacheResult<Vec<u8>> {
+        let file_info = FileInfo {
+            path: PathBuf::from(format!("memory://{}", key)),
+            size: data.len() as u64,
+            created_at: Self::get_current_timestamp(),
+            compressed: false,
         };
-
-        let write_txn = db.begin_write().map_err(|e| {
-            CacheError::Io(std::io::Error::other(format!(
-                "Failed to begin redb write transaction: {}",
-                e
-            )))
-        })?;
-
-        {
-            let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
+        let mut value_bytes = bincode::encode_to_vec(&file_info, bincode::config::standard())
+            .map_err(|e| {
                 CacheError::Io(std::io::Error::other(format!(
-                    "Failed to open redb table: {}",
+                    "Failed to serialize FileInfo: {}",
                     e
                 )))
             })?;
+        value_bytes.extend_from_slice(data);
+        Ok(value_bytes)
+    }
 
-            let index = self.cold_index.read();
-
-            // Write all entries to redb
-            for entry in index.iter() {
-                let key = entry.key().as_str();
-                let file_info = entry.value();
-
-                // Serialize FileInfo to bytes
-                let value_bytes = bincode::encode_to_vec(file_info, bincode::config::standard())
-                    .map_err(|e| {
-                        CacheError::Io(std::io::Error::other(format!(
-                            "Failed to serialize FileInfo: {}",
-                            e
-                        )))
-                    })?;
-
-                table.insert(key, value_bytes.as_slice()).map_err(|e| {
-                    CacheError::Io(std::io::Error::other(format!(
-                        "Failed to insert into redb: {}",
-                        e
-                    )))
-                })?;
-            }
+    fn persist_inline_entries(&self, entries: &[(String, Bytes)]) -> CacheResult<()> {
+        if entries.is_empty() {
+            return Ok(());
         }
 
-        // Commit transaction (ACID guarantee)
-        write_txn.commit().map_err(|e| {
-            CacheError::Io(std::io::Error::other(format!(
-                "Failed to commit redb transaction: {}",
-                e
-            )))
-        })?;
-
+        let mut conn = self.open_index_connection()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| Self::sqlite_error("Failed to begin SQLite transaction", e))?;
+        for (key, data) in entries {
+            let value_bytes = Self::encode_inline_entry(key, data)?;
+            tx.execute(
+                "INSERT OR REPLACE INTO cache_index (key, value) VALUES (?1, ?2)",
+                params![key.as_str(), value_bytes],
+            )
+            .map_err(|e| Self::sqlite_error("Failed to persist inline SQLite entry", e))?;
+        }
+        tx.commit()
+            .map_err(|e| Self::sqlite_error("Failed to commit SQLite transaction", e))?;
         Ok(())
     }
 
@@ -634,57 +529,23 @@ impl OptimizedStorage {
             .join(format!("{}.dat", &hex_hash[..16]))
     }
 
-    fn remove_existing_persisted_entry(&self, key: &str) -> CacheResult<()> {
-        let Some((_, file_info)) = self.cold_index.write().remove(key) else {
-            return Ok(());
-        };
-
-        if !file_info.path.to_string_lossy().starts_with("memory://") {
-            self.write_batcher.sync();
-            match std::fs::remove_file(&file_info.path) {
-                Ok(_) => {}
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-                Err(err) => return Err(CacheError::Io(err)),
+    fn remove_existing_persisted_entry(&self, key: &str) -> CacheResult<bool> {
+        let mut removed_file = false;
+        if let Some((_, file_info)) = self.cold_index.write().remove(key) {
+            if !file_info.path.to_string_lossy().starts_with("memory://") {
+                self.write_batcher.sync();
+                match std::fs::remove_file(&file_info.path) {
+                    Ok(_) => removed_file = true,
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(err) => return Err(CacheError::Io(err)),
+                }
             }
         }
 
-        let db_guard = self.index_db.read();
-        let db = match db_guard.as_ref() {
-            Some(db) => db,
-            None => return Ok(()),
-        };
-
-        let write_txn = db.begin_write().map_err(|e| {
-            CacheError::Io(std::io::Error::other(format!(
-                "Failed to begin redb write transaction: {}",
-                e
-            )))
-        })?;
-
-        {
-            let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
-                CacheError::Io(std::io::Error::other(format!(
-                    "Failed to open redb table: {}",
-                    e
-                )))
-            })?;
-
-            table.remove(key).map_err(|e| {
-                CacheError::Io(std::io::Error::other(format!(
-                    "Failed to remove from redb: {}",
-                    e
-                )))
-            })?;
-        }
-
-        write_txn.commit().map_err(|e| {
-            CacheError::Io(std::io::Error::other(format!(
-                "Failed to commit redb transaction: {}",
-                e
-            )))
-        })?;
-
-        Ok(())
+        let conn = self.open_index_connection()?;
+        conn.execute("DELETE FROM cache_index WHERE key = ?1", params![key])
+            .map_err(|e| Self::sqlite_error("Failed to remove SQLite index entry", e))?;
+        Ok(removed_file)
     }
 
     fn persist_file_infos(&self, file_infos: &[(String, FileInfo)]) -> CacheResult<()> {
@@ -692,54 +553,28 @@ impl OptimizedStorage {
             return Ok(());
         }
 
-        let db_guard = self.index_db.read();
-        let db = match db_guard.as_ref() {
-            Some(db) => db,
-            None => return Ok(()),
-        };
+        let mut conn = self.open_index_connection()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| Self::sqlite_error("Failed to begin SQLite transaction", e))?;
 
-        let write_txn = db.begin_write().map_err(|e| {
-            CacheError::Io(std::io::Error::other(format!(
-                "Failed to begin redb write transaction: {}",
-                e
-            )))
-        })?;
-
-        {
-            let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
-                CacheError::Io(std::io::Error::other(format!(
-                    "Failed to open redb table: {}",
-                    e
-                )))
-            })?;
-
-            for (key, file_info) in file_infos {
-                let value_bytes = bincode::encode_to_vec(file_info, bincode::config::standard())
-                    .map_err(|e| {
-                        CacheError::Io(std::io::Error::other(format!(
-                            "Failed to serialize FileInfo: {}",
-                            e
-                        )))
-                    })?;
-
-                table
-                    .insert(key.as_str(), value_bytes.as_slice())
-                    .map_err(|e| {
-                        CacheError::Io(std::io::Error::other(format!(
-                            "Failed to insert into redb: {}",
-                            e
-                        )))
-                    })?;
-            }
+        for (key, file_info) in file_infos {
+            let value_bytes = bincode::encode_to_vec(file_info, bincode::config::standard())
+                .map_err(|e| {
+                    CacheError::Io(std::io::Error::other(format!(
+                        "Failed to serialize FileInfo: {}",
+                        e
+                    )))
+                })?;
+            tx.execute(
+                "INSERT OR REPLACE INTO cache_index (key, value) VALUES (?1, ?2)",
+                params![key.as_str(), value_bytes],
+            )
+            .map_err(|e| Self::sqlite_error("Failed to persist SQLite file info", e))?;
         }
 
-        write_txn.commit().map_err(|e| {
-            CacheError::Io(std::io::Error::other(format!(
-                "Failed to commit redb transaction: {}",
-                e
-            )))
-        })?;
-
+        tx.commit()
+            .map_err(|e| Self::sqlite_error("Failed to commit SQLite transaction", e))?;
         Ok(())
     }
 
@@ -887,50 +722,44 @@ impl StorageBackend for OptimizedStorage {
                 }
             }
         } else {
-            // Level 4: Check redb for persisted memory data
-            let db_guard = self.index_db.read();
-            if let Some(db) = db_guard.as_ref() {
-                if let Ok(read_txn) = db.begin_read() {
-                    if let Ok(table) = read_txn.open_table(INDEX_TABLE) {
-                        if let Ok(Some(value)) = table.get(key) {
-                            let value_bytes = value.value();
+            // Level 4: Check SQLite for persisted inline data written by this or another process.
+            let conn = self.open_index_connection()?;
+            let value_bytes: Option<Vec<u8>> = conn
+                .query_row(
+                    "SELECT value FROM cache_index WHERE key = ?1",
+                    params![key],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| Self::sqlite_error("Failed to read SQLite index entry", e))?;
 
-                            // Try to deserialize FileInfo
-                            if let Ok((file_info, _)) = bincode::decode_from_slice::<FileInfo, _>(
-                                value_bytes,
-                                bincode::config::standard(),
-                            ) {
-                                // Check if this is memory-persisted data (path starts with "memory://")
-                                if file_info.path.to_string_lossy().starts_with("memory://") {
-                                    // Calculate FileInfo size to extract the actual data
-                                    let file_info_size = bincode::encode_to_vec(
-                                        &file_info,
-                                        bincode::config::standard(),
-                                    )
-                                    .map(|v| v.len())
-                                    .unwrap_or(0);
-
-                                    if value_bytes.len() > file_info_size {
-                                        let data = &value_bytes[file_info_size..];
-                                        self.stats.record_read(data.len() as u64);
-
-                                        // Restore to hot cache
-                                        self.hot_cache
-                                            .insert(key.to_string(), Bytes::copy_from_slice(data));
-
-                                        let entry = CacheEntry::new_inline(
-                                            key.to_string(),
-                                            data.to_vec(),
-                                            vec![],
-                                            None,
-                                        );
-                                        return Ok(Some(entry));
-                                    }
-                                }
-                            }
-                        }
+            if let Some(value_bytes) = value_bytes {
+                if let Ok((file_info, decoded_len)) = bincode::decode_from_slice::<FileInfo, _>(
+                    value_bytes.as_slice(),
+                    bincode::config::standard(),
+                ) {
+                    if file_info.path.to_string_lossy().starts_with("memory://")
+                        && value_bytes.len() > decoded_len
+                    {
+                        let data = &value_bytes[decoded_len..];
+                        self.stats.record_read(data.len() as u64);
+                        self.hot_cache
+                            .insert(key.to_string(), Bytes::copy_from_slice(data));
+                        let entry =
+                            CacheEntry::new_inline(key.to_string(), data.to_vec(), vec![], None);
+                        return Ok(Some(entry));
                     }
                 }
+            }
+
+            let file_path = self.build_file_path(key);
+            if let Ok(data) = std::fs::read(&file_path) {
+                self.stats.record_cold_hit();
+                self.stats.record_read(data.len() as u64);
+                let bytes = Bytes::from(data);
+                self.hot_cache.insert(key.to_string(), bytes.clone());
+                let entry = CacheEntry::new_inline(key.to_string(), bytes.to_vec(), vec![], None);
+                return Ok(Some(entry));
             }
 
             self.stats.record_miss();
@@ -967,10 +796,24 @@ impl StorageBackend for OptimizedStorage {
 
             self.hot_cache.remove(&key);
             self.warm_cache.remove(&key);
-            self.remove_existing_persisted_entry(&key)?;
+            let replaced_file = self.remove_existing_persisted_entry(&key)?;
 
             if data_size < self.config.disk_write_threshold {
-                self.hot_cache.insert(key, Bytes::from(data));
+                let bytes = Bytes::from(data);
+                if replaced_file {
+                    self.persist_inline_entries(&[(key.clone(), bytes.clone())])?;
+                } else {
+                    let file_path = self.build_file_path(&key);
+                    std::fs::write(&file_path, &bytes).map_err(CacheError::Io)?;
+                    let file_info = FileInfo {
+                        path: file_path,
+                        size: bytes.len() as u64,
+                        created_at: Self::get_current_timestamp(),
+                        compressed: false,
+                    };
+                    self.cold_index.write().insert(key.clone(), file_info);
+                }
+                self.hot_cache.insert(key, bytes);
                 continue;
             }
 
@@ -1016,53 +859,50 @@ impl StorageBackend for OptimizedStorage {
             found = true;
         }
 
+        let mut delete_sqlite_entry = !found;
+        let mut removed_cold_entry = false;
         if let Some((_, file_info)) = self.cold_index.write().remove(key) {
+            removed_cold_entry = true;
             found = true;
-            // Delete file asynchronously
+            delete_sqlite_entry =
+                file_info.compressed || file_info.size as usize >= self.config.disk_write_threshold;
             self.write_batcher.delete_async(file_info.path);
-
-            // Remove from redb index
-            let db_guard = self.index_db.read();
-            if let Some(db) = db_guard.as_ref() {
-                let write_txn = db.begin_write().map_err(|e| {
-                    CacheError::Io(std::io::Error::other(format!(
-                        "Failed to begin redb write transaction: {}",
-                        e
-                    )))
-                })?;
-
-                {
-                    let mut table = write_txn.open_table(INDEX_TABLE).map_err(|e| {
-                        CacheError::Io(std::io::Error::other(format!(
-                            "Failed to open redb table: {}",
-                            e
-                        )))
-                    })?;
-
-                    table.remove(key).map_err(|e| {
-                        CacheError::Io(std::io::Error::other(format!(
-                            "Failed to remove from redb: {}",
-                            e
-                        )))
-                    })?;
-                }
-
-                write_txn.commit().map_err(|e| {
-                    CacheError::Io(std::io::Error::other(format!(
-                        "Failed to commit redb transaction: {}",
-                        e
-                    )))
-                })?;
-            }
         }
 
-        Ok(found)
+        if found && !removed_cold_entry {
+            delete_sqlite_entry = true;
+        }
+
+        if !delete_sqlite_entry {
+            return Ok(found);
+        }
+
+        let conn = self.open_index_connection()?;
+        let deleted = conn
+            .execute("DELETE FROM cache_index WHERE key = ?1", params![key])
+            .map_err(|e| Self::sqlite_error("Failed to delete SQLite index entry", e))?;
+
+        Ok(found || deleted > 0)
     }
 
     fn exists(&self, key: &str) -> CacheResult<bool> {
-        Ok(self.hot_cache.contains_key(key)
+        if self.hot_cache.contains_key(key)
             || self.warm_cache.contains_key(key)
-            || self.cold_index.read().contains_key(key))
+            || self.cold_index.read().contains_key(key)
+        {
+            return Ok(true);
+        }
+
+        let conn = self.open_index_connection()?;
+        let exists: Option<i32> = conn
+            .query_row(
+                "SELECT 1 FROM cache_index WHERE key = ?1 LIMIT 1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| Self::sqlite_error("Failed to check SQLite index entry", e))?;
+        Ok(exists.is_some() || self.build_file_path(key).exists())
     }
 
     fn keys(&self) -> CacheResult<Vec<String>> {
@@ -1079,6 +919,17 @@ impl StorageBackend for OptimizedStorage {
 
         for entry in self.cold_index.read().iter() {
             keys.insert(entry.key().clone());
+        }
+
+        let conn = self.open_index_connection()?;
+        let mut stmt = conn
+            .prepare("SELECT key FROM cache_index")
+            .map_err(|e| Self::sqlite_error("Failed to query SQLite index keys", e))?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| Self::sqlite_error("Failed to iterate SQLite index keys", e))?;
+        for row in rows {
+            keys.insert(row.map_err(|e| Self::sqlite_error("Failed to read SQLite key", e))?);
         }
 
         Ok(keys.into_iter().collect())
@@ -1101,33 +952,9 @@ impl StorageBackend for OptimizedStorage {
         // Force sync to ensure all deletes are processed
         self.write_batcher.sync();
 
-        // Clear redb index
-        let db_guard = self.index_db.read();
-        if let Some(db) = db_guard.as_ref() {
-            let write_txn = db.begin_write().map_err(|e| {
-                CacheError::Io(std::io::Error::other(format!(
-                    "Failed to begin redb write transaction: {}",
-                    e
-                )))
-            })?;
-
-            {
-                // Delete the table to clear all entries
-                write_txn.delete_table(INDEX_TABLE).map_err(|e| {
-                    CacheError::Io(std::io::Error::other(format!(
-                        "Failed to delete redb table: {}",
-                        e
-                    )))
-                })?;
-            }
-
-            write_txn.commit().map_err(|e| {
-                CacheError::Io(std::io::Error::other(format!(
-                    "Failed to commit redb transaction: {}",
-                    e
-                )))
-            })?;
-        }
+        let conn = self.open_index_connection()?;
+        conn.execute("DELETE FROM cache_index", [])
+            .map_err(|e| Self::sqlite_error("Failed to clear SQLite index", e))?;
 
         Ok(())
     }
@@ -1175,12 +1002,26 @@ impl OptimizedStorage {
         // Remove from all cache levels first
         self.hot_cache.remove(key);
         self.warm_cache.remove(key);
-        self.remove_existing_persisted_entry(key)?;
+        let replaced_file = self.remove_existing_persisted_entry(key)?;
 
         if data_size < self.config.disk_write_threshold {
-            // Small data: store in hot cache only (below disk_write_threshold)
-            self.hot_cache
-                .insert(key.to_string(), Bytes::copy_from_slice(data));
+            // Small data stays hot in this process. New entries are also written to a
+            // deterministic file so other processes can read them without a shared DB handle.
+            let bytes = Bytes::copy_from_slice(data);
+            if replaced_file {
+                self.persist_inline_entries(&[(key.to_string(), bytes.clone())])?;
+            } else {
+                let file_path = self.build_file_path(key);
+                std::fs::write(&file_path, &bytes).map_err(CacheError::Io)?;
+                let file_info = FileInfo {
+                    path: file_path,
+                    size: bytes.len() as u64,
+                    created_at: Self::get_current_timestamp(),
+                    compressed: false,
+                };
+                self.cold_index.write().insert(key.to_string(), file_info);
+            }
+            self.hot_cache.insert(key.to_string(), bytes);
             self.cleanup_hot_cache();
         } else {
             // Large data: compress and store to disk (>= disk_write_threshold)

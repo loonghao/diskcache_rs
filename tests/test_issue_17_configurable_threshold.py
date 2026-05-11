@@ -35,11 +35,10 @@ def test_disk_write_threshold_default():
         # Close cache to ensure data is persisted
         cache.close()
 
-        # With redb backend, data is stored in index.redb file
-        # Check that redb database was created
-        redb_file = Path(tmpdir) / "index.redb"
-        assert redb_file.exists(), "redb database file should exist"
-        assert redb_file.stat().st_size > 0, "redb database should not be empty"
+        # With SQLite backend, index metadata is stored in index.sqlite3.
+        index_file = Path(tmpdir) / "index.sqlite3"
+        assert index_file.exists(), "SQLite index file should exist"
+        assert index_file.stat().st_size > 0, "SQLite index should not be empty"
 
 
 def test_disk_write_threshold_custom_zero():
@@ -60,10 +59,10 @@ def test_disk_write_threshold_custom_zero():
         # Close cache to ensure data is persisted
         cache.close()
 
-        # With redb backend, data is stored in index.redb file
-        redb_file = Path(tmpdir) / "index.redb"
-        assert redb_file.exists(), "redb database file should exist"
-        assert redb_file.stat().st_size > 0, "redb database should not be empty"
+        # With SQLite backend, index metadata is stored in index.sqlite3.
+        index_file = Path(tmpdir) / "index.sqlite3"
+        assert index_file.exists(), "SQLite index file should exist"
+        assert index_file.stat().st_size > 0, "SQLite index should not be empty"
 
 
 def test_disk_write_threshold_custom_large():
@@ -89,10 +88,10 @@ def test_disk_write_threshold_custom_large():
         # Close cache to ensure data is persisted
         cache.close()
 
-        # With redb backend, data is stored in index.redb file
-        redb_file = Path(tmpdir) / "index.redb"
-        assert redb_file.exists(), "redb database file should exist"
-        assert redb_file.stat().st_size > 0, "redb database should not be empty"
+        # With SQLite backend, index metadata is stored in index.sqlite3.
+        index_file = Path(tmpdir) / "index.sqlite3"
+        assert index_file.exists(), "SQLite index file should exist"
+        assert index_file.stat().st_size > 0, "SQLite index should not be empty"
 
 
 def test_file_locking_enabled():
