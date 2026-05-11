@@ -111,6 +111,7 @@ def test_file_locking_enabled():
 
         # Note: Actual file locking behavior is hard to test without concurrent access
         # This test just verifies the option can be set without errors
+        cache.close()
 
 
 def test_file_locking_disabled_default():
@@ -127,6 +128,7 @@ def test_file_locking_disabled_default():
 
         # Verify data can be retrieved
         assert cache.get("unlocked_key") == data
+        cache.close()
 
 
 if __name__ == "__main__":
