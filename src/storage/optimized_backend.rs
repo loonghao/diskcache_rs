@@ -37,7 +37,7 @@ pub struct OptimizedStorage {
     warm_cache: Arc<DashMap<String, MmapEntry>>, // Memory-mapped files
     cold_index: Arc<RwLock<DashMap<String, FileInfo>>>, // File metadata (in-memory cache)
 
-    index_db_path: PathBuf,
+    index_db: Arc<Mutex<Connection>>,
 
     // Performance optimizations
     #[allow(dead_code)]
@@ -321,7 +321,8 @@ impl OptimizedStorage {
         std::fs::create_dir_all(&data_dir).map_err(CacheError::Io)?;
 
         let index_db_path = directory.join("index.sqlite3");
-        Self::initialize_index_connection_at(&index_db_path)?;
+        let index_db = Self::open_index_connection_at(&index_db_path)?;
+        Self::initialize_index_connection(&index_db, config.use_file_locking)?;
 
         let write_batcher = Arc::new(WriteBatcher::new(data_dir.clone(), config.batch_size));
 
@@ -330,7 +331,7 @@ impl OptimizedStorage {
             hot_cache: Arc::new(DashMap::with_capacity(config.hot_cache_size)),
             warm_cache: Arc::new(DashMap::with_capacity(config.warm_cache_size)),
             cold_index: Arc::new(RwLock::new(DashMap::new())),
-            index_db_path,
+            index_db: Arc::new(Mutex::new(index_db)),
             buffer_pool: Arc::new(BufferPool::new()),
             write_batcher,
             config,
@@ -347,12 +348,24 @@ impl OptimizedStorage {
         CacheError::Io(std::io::Error::other(format!("{}: {}", context, error)))
     }
 
-    fn initialize_index_connection_at(path: &Path) -> CacheResult<()> {
-        let conn = Self::open_index_connection_at(path)?;
-        conn.pragma_update(None, "journal_mode", "WAL")
-            .map_err(|e| Self::sqlite_error("Failed to enable SQLite WAL", e))?;
-        conn.pragma_update(None, "synchronous", "NORMAL")
-            .map_err(|e| Self::sqlite_error("Failed to configure SQLite synchronous mode", e))?;
+    fn initialize_index_connection(conn: &Connection, nfs_safe: bool) -> CacheResult<()> {
+        if nfs_safe {
+            conn.pragma_update(None, "journal_mode", "DELETE")
+                .map_err(|e| Self::sqlite_error("Failed to enable SQLite rollback journal", e))?;
+            conn.pragma_update(None, "synchronous", "FULL")
+                .map_err(|e| {
+                    Self::sqlite_error("Failed to configure SQLite full synchronous mode", e)
+                })?;
+            conn.pragma_update(None, "mmap_size", 0)
+                .map_err(|e| Self::sqlite_error("Failed to disable SQLite mmap", e))?;
+        } else {
+            conn.pragma_update(None, "journal_mode", "WAL")
+                .map_err(|e| Self::sqlite_error("Failed to enable SQLite WAL", e))?;
+            conn.pragma_update(None, "synchronous", "NORMAL")
+                .map_err(|e| {
+                    Self::sqlite_error("Failed to configure SQLite normal synchronous mode", e)
+                })?;
+        }
         conn.execute(INDEX_TABLE_SQL, [])
             .map_err(|e| Self::sqlite_error("Failed to create SQLite index table", e))?;
         Ok(())
@@ -366,13 +379,9 @@ impl OptimizedStorage {
         Ok(conn)
     }
 
-    fn open_index_connection(&self) -> CacheResult<Connection> {
-        Self::open_index_connection_at(&self.index_db_path)
-    }
-
     /// Rebuild the cold index by loading from SQLite database
     fn rebuild_index_from_disk(&mut self) -> CacheResult<()> {
-        let conn = self.open_index_connection()?;
+        let conn = self.index_db.lock();
         let mut stmt = conn
             .prepare("SELECT key, value FROM cache_index")
             .map_err(|e| Self::sqlite_error("Failed to query SQLite index", e))?;
@@ -497,17 +506,19 @@ impl OptimizedStorage {
             return Ok(());
         }
 
-        let mut conn = self.open_index_connection()?;
+        let mut conn = self.index_db.lock();
         let tx = conn
             .transaction()
             .map_err(|e| Self::sqlite_error("Failed to begin SQLite transaction", e))?;
-        for (key, data) in entries {
-            let value_bytes = Self::encode_inline_entry(key, data)?;
-            tx.execute(
-                "INSERT OR REPLACE INTO cache_index (key, value) VALUES (?1, ?2)",
-                params![key.as_str(), value_bytes],
-            )
-            .map_err(|e| Self::sqlite_error("Failed to persist inline SQLite entry", e))?;
+        {
+            let mut stmt = tx
+                .prepare("INSERT OR REPLACE INTO cache_index (key, value) VALUES (?1, ?2)")
+                .map_err(|e| Self::sqlite_error("Failed to prepare inline SQLite entry", e))?;
+            for (key, data) in entries {
+                let value_bytes = Self::encode_inline_entry(key, data)?;
+                stmt.execute(params![key.as_str(), value_bytes])
+                    .map_err(|e| Self::sqlite_error("Failed to persist inline SQLite entry", e))?;
+            }
         }
         tx.commit()
             .map_err(|e| Self::sqlite_error("Failed to commit SQLite transaction", e))?;
@@ -542,7 +553,7 @@ impl OptimizedStorage {
             }
         }
 
-        let conn = self.open_index_connection()?;
+        let conn = self.index_db.lock();
         conn.execute("DELETE FROM cache_index WHERE key = ?1", params![key])
             .map_err(|e| Self::sqlite_error("Failed to remove SQLite index entry", e))?;
         Ok(removed_file)
@@ -553,24 +564,26 @@ impl OptimizedStorage {
             return Ok(());
         }
 
-        let mut conn = self.open_index_connection()?;
+        let mut conn = self.index_db.lock();
         let tx = conn
             .transaction()
             .map_err(|e| Self::sqlite_error("Failed to begin SQLite transaction", e))?;
 
-        for (key, file_info) in file_infos {
-            let value_bytes = bincode::encode_to_vec(file_info, bincode::config::standard())
-                .map_err(|e| {
-                    CacheError::Io(std::io::Error::other(format!(
-                        "Failed to serialize FileInfo: {}",
-                        e
-                    )))
-                })?;
-            tx.execute(
-                "INSERT OR REPLACE INTO cache_index (key, value) VALUES (?1, ?2)",
-                params![key.as_str(), value_bytes],
-            )
-            .map_err(|e| Self::sqlite_error("Failed to persist SQLite file info", e))?;
+        {
+            let mut stmt = tx
+                .prepare("INSERT OR REPLACE INTO cache_index (key, value) VALUES (?1, ?2)")
+                .map_err(|e| Self::sqlite_error("Failed to prepare SQLite file info", e))?;
+            for (key, file_info) in file_infos {
+                let value_bytes = bincode::encode_to_vec(file_info, bincode::config::standard())
+                    .map_err(|e| {
+                        CacheError::Io(std::io::Error::other(format!(
+                            "Failed to serialize FileInfo: {}",
+                            e
+                        )))
+                    })?;
+                stmt.execute(params![key.as_str(), value_bytes])
+                    .map_err(|e| Self::sqlite_error("Failed to persist SQLite file info", e))?;
+            }
         }
 
         tx.commit()
@@ -723,7 +736,7 @@ impl StorageBackend for OptimizedStorage {
             }
         } else {
             // Level 4: Check SQLite for persisted inline data written by this or another process.
-            let conn = self.open_index_connection()?;
+            let conn = self.index_db.lock();
             let value_bytes: Option<Vec<u8>> = conn
                 .query_row(
                     "SELECT value FROM cache_index WHERE key = ?1",
@@ -789,6 +802,7 @@ impl StorageBackend for OptimizedStorage {
         }
 
         let mut file_infos = Vec::new();
+        let mut inline_entries = Vec::new();
 
         for (key, data) in entries {
             let data_size = data.len();
@@ -796,23 +810,11 @@ impl StorageBackend for OptimizedStorage {
 
             self.hot_cache.remove(&key);
             self.warm_cache.remove(&key);
-            let replaced_file = self.remove_existing_persisted_entry(&key)?;
+            self.remove_existing_persisted_entry(&key)?;
 
             if data_size < self.config.disk_write_threshold {
                 let bytes = Bytes::from(data);
-                if replaced_file {
-                    self.persist_inline_entries(&[(key.clone(), bytes.clone())])?;
-                } else {
-                    let file_path = self.build_file_path(&key);
-                    std::fs::write(&file_path, &bytes).map_err(CacheError::Io)?;
-                    let file_info = FileInfo {
-                        path: file_path,
-                        size: bytes.len() as u64,
-                        created_at: Self::get_current_timestamp(),
-                        compressed: false,
-                    };
-                    self.cold_index.write().insert(key.clone(), file_info);
-                }
+                inline_entries.push((key.clone(), bytes.clone()));
                 self.hot_cache.insert(key, bytes);
                 continue;
             }
@@ -842,6 +844,7 @@ impl StorageBackend for OptimizedStorage {
         }
 
         self.cleanup_hot_cache();
+        self.persist_inline_entries(&inline_entries)?;
         self.persist_file_infos(&file_infos)?;
 
         Ok(())
@@ -877,7 +880,7 @@ impl StorageBackend for OptimizedStorage {
             return Ok(found);
         }
 
-        let conn = self.open_index_connection()?;
+        let conn = self.index_db.lock();
         let deleted = conn
             .execute("DELETE FROM cache_index WHERE key = ?1", params![key])
             .map_err(|e| Self::sqlite_error("Failed to delete SQLite index entry", e))?;
@@ -893,7 +896,7 @@ impl StorageBackend for OptimizedStorage {
             return Ok(true);
         }
 
-        let conn = self.open_index_connection()?;
+        let conn = self.index_db.lock();
         let exists: Option<i32> = conn
             .query_row(
                 "SELECT 1 FROM cache_index WHERE key = ?1 LIMIT 1",
@@ -921,7 +924,7 @@ impl StorageBackend for OptimizedStorage {
             keys.insert(entry.key().clone());
         }
 
-        let conn = self.open_index_connection()?;
+        let conn = self.index_db.lock();
         let mut stmt = conn
             .prepare("SELECT key FROM cache_index")
             .map_err(|e| Self::sqlite_error("Failed to query SQLite index keys", e))?;
@@ -952,7 +955,7 @@ impl StorageBackend for OptimizedStorage {
         // Force sync to ensure all deletes are processed
         self.write_batcher.sync();
 
-        let conn = self.open_index_connection()?;
+        let conn = self.index_db.lock();
         conn.execute("DELETE FROM cache_index", [])
             .map_err(|e| Self::sqlite_error("Failed to clear SQLite index", e))?;
 
@@ -1002,25 +1005,11 @@ impl OptimizedStorage {
         // Remove from all cache levels first
         self.hot_cache.remove(key);
         self.warm_cache.remove(key);
-        let replaced_file = self.remove_existing_persisted_entry(key)?;
+        self.remove_existing_persisted_entry(key)?;
 
         if data_size < self.config.disk_write_threshold {
-            // Small data stays hot in this process. New entries are also written to a
-            // deterministic file so other processes can read them without a shared DB handle.
             let bytes = Bytes::copy_from_slice(data);
-            if replaced_file {
-                self.persist_inline_entries(&[(key.to_string(), bytes.clone())])?;
-            } else {
-                let file_path = self.build_file_path(key);
-                std::fs::write(&file_path, &bytes).map_err(CacheError::Io)?;
-                let file_info = FileInfo {
-                    path: file_path,
-                    size: bytes.len() as u64,
-                    created_at: Self::get_current_timestamp(),
-                    compressed: false,
-                };
-                self.cold_index.write().insert(key.to_string(), file_info);
-            }
+            self.persist_inline_entries(&[(key.to_string(), bytes.clone())])?;
             self.hot_cache.insert(key.to_string(), bytes);
             self.cleanup_hot_cache();
         } else {
