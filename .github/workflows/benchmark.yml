@@ -72,33 +72,31 @@ jobs:
               const results = JSON.parse(fs.readFileSync('benchmark_results.json', 'utf8'));
 
               let comment = '## 📊 Performance Benchmark Results\n\n';
-              comment += '| Benchmark | python-diskcache | diskcache_rs | Winner |\n';
-              comment += '|-----------|------------------|--------------|--------|\n';
+              comment += '| Benchmark | Metric | python-diskcache | diskcache_rs | Winner |\n';
+              comment += '|-----------|--------|------------------|--------------|--------|\n';
+
+              const addRow = (name, metric, dcOps, rsOps) => {
+                if (!dcOps || !rsOps) return;
+                const winner = dcOps > rsOps
+                  ? `python-diskcache (${(dcOps/rsOps).toFixed(1)}x)`
+                  : `diskcache_rs (${(rsOps/dcOps).toFixed(1)}x)`;
+                comment += `| ${name} | ${metric} | ${dcOps.toFixed(1)} ops/s | ${rsOps.toFixed(1)} ops/s | ${winner} |\n`;
+              };
 
               for (const [name, result] of Object.entries(results)) {
-                // Handle both old and new result formats
-                let dcOps, rsOps;
-                if (result.diskcache && result.diskcache_rs) {
-                  // New format with nested operations
-                  if (result.diskcache.get && result.diskcache_rs.get) {
-                    dcOps = result.diskcache.get.ops_per_sec;
-                    rsOps = result.diskcache_rs.get.ops_per_sec;
-                  } else {
-                    dcOps = result.diskcache.ops_per_sec || 0;
-                    rsOps = result.diskcache_rs.ops_per_sec || 0;
-                  }
-                } else {
-                  continue; // Skip malformed results
-                }
+                if (!result.diskcache || !result.diskcache_rs) continue;
 
-                let winner;
-                if (dcOps > rsOps) {
-                  winner = `python-diskcache (${(dcOps/rsOps).toFixed(1)}x)`;
-                } else {
-                  winner = `diskcache_rs (${(rsOps/dcOps).toFixed(1)}x)`;
-                }
+                const weighted = result.weighted_ops_per_sec || {};
+                addRow(name, 'weighted', weighted.diskcache, weighted.diskcache_rs);
 
-                comment += `| ${name} | ${dcOps.toFixed(1)} ops/s | ${rsOps.toFixed(1)} ops/s | ${winner} |\n`;
+                for (const metric of ['get', 'set', 'delete']) {
+                  addRow(
+                    name,
+                    metric,
+                    result.diskcache[metric]?.ops_per_sec,
+                    result.diskcache_rs[metric]?.ops_per_sec
+                  );
+                }
               }
 
               comment += '\n> 💡 **Note**: Performance varies based on storage type and network conditions.\n';

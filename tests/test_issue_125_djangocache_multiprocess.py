@@ -1,8 +1,10 @@
 """Regression tests for issue #125."""
 
+import sqlite3
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 
 def test_djangocache_is_exported():
@@ -132,6 +134,33 @@ finally:
         assert cache.get("key") == b"new"
     finally:
         cache.close()
+
+
+def test_cache_upgrades_legacy_sqlite_index_schema():
+    from diskcache_rs import Cache
+
+    path = Path(tempfile.mkdtemp(prefix="diskcache-rs-issue-125-schema-"))
+    conn = sqlite3.connect(path / "index.sqlite3")
+    try:
+        conn.execute("CREATE TABLE cache_index (key TEXT PRIMARY KEY, value BLOB NOT NULL)")
+        conn.commit()
+    finally:
+        conn.close()
+
+    cache = Cache(str(path))
+    try:
+        assert cache.set("key", b"value")
+        assert cache.get("key") == b"value"
+    finally:
+        cache.close()
+
+    conn = sqlite3.connect(path / "index.sqlite3")
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(cache_index)")}
+    finally:
+        conn.close()
+
+    assert "generation" in columns
 
 
 def test_cache_observes_other_process_delete():
