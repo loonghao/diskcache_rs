@@ -157,7 +157,7 @@ impl DiskCacheMigrator {
         let access_time_u64 = access_time.map(|t| t as u64).unwrap_or_else(|| {
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs()
         });
 
