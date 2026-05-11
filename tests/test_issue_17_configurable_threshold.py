@@ -2,7 +2,7 @@
 Test for issue #17: Configurable disk write threshold and NFS file locking
 
 This test demonstrates:
-1. Configurable disk_write_threshold - control when data is written to disk vs memory-only
+1. Configurable disk_write_threshold - control when data is written to disk vs inline SQLite
 2. File locking support for NFS scenarios
 """
 
@@ -14,18 +14,18 @@ import pytest
 
 
 def test_disk_write_threshold_default():
-    """Test default behavior: items < 1KB stay in memory, >= 1KB written to disk"""
+    """Test default behavior: items < 32KB stay inline, >= 32KB written to disk"""
     from diskcache_rs import Cache
 
     with tempfile.TemporaryDirectory() as tmpdir:
         cache = Cache(tmpdir)
 
-        # Small data (< 1KB) - should NOT create disk file
+        # Small data (< 32KB) - should NOT create data file
         small_data = b"x" * 512  # 512 bytes
         cache.set("small_key", small_data)
 
-        # Large data (>= 1KB) - should create disk file
-        large_data = b"y" * 2048  # 2KB
+        # Large data (>= 32KB) - should create data file
+        large_data = b"y" * (40 * 1024)
         cache.set("large_key", large_data)
 
         # Verify data can be retrieved

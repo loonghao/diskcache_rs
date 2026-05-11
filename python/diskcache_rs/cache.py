@@ -57,8 +57,8 @@ class Cache:
             **kwargs: Additional arguments:
                 - max_size / size_limit: Maximum cache size in bytes (default: 1GB)
                 - max_entries / count_limit: Maximum number of entries (default: 100,000)
-                - disk_write_threshold: Size threshold for writing to disk vs memory-only (default: 1024 bytes)
-                  Items smaller than this threshold are stored in memory only and won't create disk files.
+                - disk_write_threshold: Size threshold for writing to disk vs inline SQLite (default: 32768 bytes)
+                  Items smaller than this threshold are stored inline and won't create data files.
                   Set to 0 to write all items to disk (useful for testing/debugging).
                 - use_file_locking: Enable file locking for NFS scenarios (default: False)
                   Enable this when using cache on network filesystems to prevent corruption.
@@ -82,7 +82,7 @@ class Cache:
         max_entries = kwargs.get("count_limit", kwargs.get("max_entries", 100_000))
 
         # New configuration options for issue #17
-        disk_write_threshold = kwargs.get("disk_write_threshold", 1024)  # 1KB default
+        disk_write_threshold = kwargs.get("disk_write_threshold", disk_min_file_size)
         use_file_locking = kwargs.get("use_file_locking", False)
 
         # Create the underlying Rust cache

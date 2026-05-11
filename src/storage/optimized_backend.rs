@@ -60,7 +60,7 @@ pub struct StorageConfig {
     pub compression_threshold: usize, // Size threshold for compression
     pub use_compression: bool,
     pub sync_writes: bool,
-    pub disk_write_threshold: usize, // Size threshold for writing to disk (vs memory-only)
+    pub disk_write_threshold: usize, // Size threshold for writing to disk (vs inline SQLite)
     pub use_file_locking: bool,      // Enable file locking for NFS scenarios
 }
 
@@ -71,11 +71,11 @@ impl Default for StorageConfig {
             warm_cache_size: 1_000,
             mmap_threshold: 64 * 1024, // 64KB
             batch_size: 100,
-            compression_threshold: 1024, // 1KB
+            compression_threshold: 32 * 1024, // 32KB
             use_compression: true,
             sync_writes: false,
-            disk_write_threshold: 1024, // 1KB - data smaller than this stays in memory only
-            use_file_locking: false,    // Disabled by default for performance
+            disk_write_threshold: 32 * 1024, // 32KB - smaller data stays inline in SQLite
+            use_file_locking: false,         // Disabled by default for performance
         }
     }
 }
