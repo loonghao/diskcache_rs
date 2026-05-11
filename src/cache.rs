@@ -18,7 +18,7 @@ use std::sync::Arc;
 /// Simplified cache configuration
 ///
 /// # Fields
-/// * `disk_write_threshold` - Size threshold in bytes for writing to disk (vs memory-only). Default: 1KB
+/// * `disk_write_threshold` - Size threshold in bytes for writing to disk (vs inline SQLite). Default: 32KB
 /// * `use_file_locking` - Enable file locking for NFS scenarios. Default: false
 #[derive(Debug, Clone)]
 pub struct CacheConfig {
@@ -26,7 +26,7 @@ pub struct CacheConfig {
     pub max_size: Option<u64>,
     pub max_entries: Option<u64>,
     pub eviction_strategy: EvictionStrategy,
-    pub disk_write_threshold: usize, // Size threshold for writing to disk (vs memory-only)
+    pub disk_write_threshold: usize, // Size threshold for writing to disk (vs inline SQLite)
     pub use_file_locking: bool,      // Enable file locking for NFS scenarios
 }
 
@@ -37,8 +37,8 @@ impl Default for CacheConfig {
             max_size: Some(1024 * 1024 * 1024), // 1GB
             max_entries: Some(100_000),
             eviction_strategy: EvictionStrategy::LeastRecentlyStored,
-            disk_write_threshold: 1024, // 1KB - data smaller than this stays in memory only
-            use_file_locking: false,    // Disabled by default for performance
+            disk_write_threshold: 32 * 1024, // 32KB - data smaller than this stays inline in SQLite
+            use_file_locking: false,         // Disabled by default for performance
         }
     }
 }
