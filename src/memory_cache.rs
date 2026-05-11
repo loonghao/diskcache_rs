@@ -13,6 +13,7 @@ pub struct MemoryCache {
 
 impl MemoryCache {
     /// Create a new memory cache with specified capacity
+    #[allow(dead_code)]
     pub fn new(max_entries: usize, max_memory_size: u64) -> Self {
         let capacity = NonZeroUsize::new(max_entries).unwrap_or(NonZeroUsize::new(1000).unwrap());
 

@@ -3,7 +3,7 @@ use crate::serialization::CacheEntry;
 use crate::storage::StorageBackend;
 use bytes::{Bytes, BytesMut};
 use dashmap::DashMap;
-use memmap2::{Mmap, MmapOptions};
+use memmap2::Mmap;
 use parking_lot::{Mutex, RwLock};
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -53,10 +53,11 @@ pub struct OptimizedStorage {
 
 #[derive(Clone)]
 pub struct StorageConfig {
-    pub hot_cache_size: usize,        // Max entries in hot cache
-    pub warm_cache_size: usize,       // Max memory-mapped files
-    pub mmap_threshold: usize,        // Size threshold for memory mapping
-    pub batch_size: usize,            // Write batch size
+    pub hot_cache_size: usize,  // Max entries in hot cache
+    pub warm_cache_size: usize, // Max memory-mapped files
+    #[allow(dead_code)]
+    pub mmap_threshold: usize, // Size threshold for memory mapping
+    pub batch_size: usize,      // Write batch size
     pub compression_threshold: usize, // Size threshold for compression
     pub use_compression: bool,
     pub sync_writes: bool,
@@ -80,6 +81,7 @@ impl Default for StorageConfig {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 struct MmapEntry {
     mmap: Mmap,
@@ -95,6 +97,11 @@ struct FileInfo {
     #[allow(dead_code)]
     created_at: u64,
     compressed: bool,
+}
+
+enum IndexEntry {
+    Inline(Bytes),
+    File(FileInfo),
 }
 
 /// Buffer pool for reusing allocations
@@ -286,6 +293,7 @@ impl StorageStats {
         self.hot_hits.fetch_add(1, Ordering::Relaxed);
     }
 
+    #[allow(dead_code)]
     fn record_warm_hit(&self) {
         self.warm_hits.fetch_add(1, Ordering::Relaxed);
     }
@@ -444,31 +452,8 @@ impl OptimizedStorage {
         }
     }
 
-    /// Flush all in-memory caches (hot_cache and warm_cache) to disk
-    /// This ensures data persistence when closing the cache
+    /// Flush in-flight file writes. Cache entries are already persisted when set.
     fn flush_memory_caches(&self) -> CacheResult<()> {
-        let mut entries_to_persist = Vec::new();
-
-        for entry in self.hot_cache.iter() {
-            entries_to_persist.push((entry.key().clone(), entry.value().clone()));
-        }
-
-        for entry in self.warm_cache.iter() {
-            let data = Bytes::copy_from_slice(&entry.value().mmap[..entry.value().size]);
-            entries_to_persist.push((entry.key().clone(), data));
-        }
-
-        if entries_to_persist.is_empty() {
-            return Ok(());
-        }
-
-        tracing::debug!(
-            "Flushing {} entries from memory caches to SQLite index",
-            entries_to_persist.len()
-        );
-
-        self.persist_inline_entries(&entries_to_persist)?;
-        tracing::debug!("Successfully flushed memory caches to SQLite index");
         Ok(())
     }
 
@@ -523,6 +508,71 @@ impl OptimizedStorage {
         tx.commit()
             .map_err(|e| Self::sqlite_error("Failed to commit SQLite transaction", e))?;
         Ok(())
+    }
+
+    fn decode_index_entry(value_bytes: &[u8]) -> CacheResult<IndexEntry> {
+        let (file_info, decoded_len): (FileInfo, usize) =
+            bincode::decode_from_slice(value_bytes, bincode::config::standard()).map_err(|e| {
+                CacheError::Io(std::io::Error::other(format!(
+                    "Failed to deserialize FileInfo: {}",
+                    e
+                )))
+            })?;
+
+        if file_info.path.to_string_lossy().starts_with("memory://") {
+            if value_bytes.len() <= decoded_len {
+                return Err(CacheError::Io(std::io::Error::other(
+                    "Inline SQLite entry is missing data bytes",
+                )));
+            }
+            Ok(IndexEntry::Inline(Bytes::copy_from_slice(
+                &value_bytes[decoded_len..],
+            )))
+        } else {
+            Ok(IndexEntry::File(file_info))
+        }
+    }
+
+    fn read_index_entry(&self, key: &str) -> CacheResult<Option<IndexEntry>> {
+        let conn = self.index_db.lock();
+        let value_bytes: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT value FROM cache_index WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| Self::sqlite_error("Failed to read SQLite index entry", e))?;
+        drop(conn);
+
+        value_bytes
+            .as_deref()
+            .map(Self::decode_index_entry)
+            .transpose()
+    }
+
+    fn read_file_entry(&self, key: &str, file_info: FileInfo) -> CacheResult<Option<CacheEntry>> {
+        match std::fs::read(&file_info.path) {
+            Ok(raw_data) => {
+                self.stats.record_cold_hit();
+                let data = self.decompress_if_needed(&raw_data, file_info.compressed)?;
+                self.stats.record_read(data.len() as u64);
+                Ok(Some(CacheEntry::new_inline(
+                    key.to_string(),
+                    data.to_vec(),
+                    vec![],
+                    None,
+                )))
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                self.hot_cache.remove(key);
+                self.warm_cache.remove(key);
+                self.cold_index.write().remove(key);
+                self.stats.record_miss();
+                Ok(None)
+            }
+            Err(err) => Err(CacheError::Io(err)),
+        }
     }
 
     fn get_current_timestamp() -> u64 {
@@ -663,120 +713,31 @@ impl OptimizedStorage {
 
 impl StorageBackend for OptimizedStorage {
     fn get(&self, key: &str) -> CacheResult<Option<CacheEntry>> {
-        // Level 1: Hot cache (fastest)
-        if let Some(data) = self.hot_cache.get(key) {
-            self.stats.record_hot_hit();
-            self.stats.record_read(data.len() as u64);
-            let entry = CacheEntry::new_inline(key.to_string(), data.to_vec(), vec![], None);
-            return Ok(Some(entry));
-        }
-
-        // Level 2: Warm cache (memory-mapped files)
-        if let Some(mmap_entry) = self.warm_cache.get(key) {
-            self.stats.record_warm_hit();
-            mmap_entry
-                .last_accessed
-                .store(Self::get_current_timestamp(), Ordering::Relaxed);
-
-            let data = &mmap_entry.mmap[..mmap_entry.size];
-            self.stats.record_read(data.len() as u64);
-
-            // Promote to hot cache if small enough
-            if data.len() < 4096 {
-                self.hot_cache
-                    .insert(key.to_string(), Bytes::copy_from_slice(data));
-            }
-
-            let entry = CacheEntry::new_inline(key.to_string(), data.to_vec(), vec![], None);
-            return Ok(Some(entry));
-        }
-
-        // Level 3: Cold storage (disk files)
-        if let Some(file_info) = self.cold_index.read().get(key) {
-            let file_info = file_info.clone();
-            drop(self.cold_index.read()); // Release read lock early
-
-            match std::fs::read(&file_info.path) {
-                Ok(raw_data) => {
-                    self.stats.record_cold_hit();
-
-                    let data = self.decompress_if_needed(&raw_data, file_info.compressed)?;
-                    self.stats.record_read(data.len() as u64);
-
-                    // Decide on caching strategy based on size
-                    if data.len() < 4096 {
-                        // Small data: promote to hot cache
-                        self.hot_cache.insert(key.to_string(), data.clone());
-                        self.cleanup_hot_cache();
-                    } else if data.len() < self.config.mmap_threshold {
-                        // Medium data: create memory-mapped file
-                        if let Ok(file) = std::fs::File::open(&file_info.path) {
-                            if let Ok(mmap) = unsafe { MmapOptions::new().map(&file) } {
-                                let mmap_entry = MmapEntry {
-                                    mmap,
-                                    size: raw_data.len(),
-                                    last_accessed: AtomicU64::new(Self::get_current_timestamp()),
-                                };
-                                self.warm_cache.insert(key.to_string(), mmap_entry);
-                                self.cleanup_warm_cache();
-                            }
-                        }
-                    }
-
-                    let entry =
-                        CacheEntry::new_inline(key.to_string(), data.to_vec(), vec![], None);
-                    Ok(Some(entry))
-                }
-                Err(_) => {
-                    // File not found or read error, remove from index
-                    self.cold_index.write().remove(key);
-                    self.stats.record_miss();
-                    Ok(None)
-                }
-            }
-        } else {
-            // Level 4: Check SQLite for persisted inline data written by this or another process.
-            let conn = self.index_db.lock();
-            let value_bytes: Option<Vec<u8>> = conn
-                .query_row(
-                    "SELECT value FROM cache_index WHERE key = ?1",
-                    params![key],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(|e| Self::sqlite_error("Failed to read SQLite index entry", e))?;
-
-            if let Some(value_bytes) = value_bytes {
-                if let Ok((file_info, decoded_len)) = bincode::decode_from_slice::<FileInfo, _>(
-                    value_bytes.as_slice(),
-                    bincode::config::standard(),
-                ) {
-                    if file_info.path.to_string_lossy().starts_with("memory://")
-                        && value_bytes.len() > decoded_len
-                    {
-                        let data = &value_bytes[decoded_len..];
-                        self.stats.record_read(data.len() as u64);
-                        self.hot_cache
-                            .insert(key.to_string(), Bytes::copy_from_slice(data));
-                        let entry =
-                            CacheEntry::new_inline(key.to_string(), data.to_vec(), vec![], None);
-                        return Ok(Some(entry));
-                    }
-                }
-            }
-
-            let file_path = self.build_file_path(key);
-            if let Ok(data) = std::fs::read(&file_path) {
-                self.stats.record_cold_hit();
+        match self.read_index_entry(key)? {
+            Some(IndexEntry::Inline(data)) => {
+                self.stats.record_hot_hit();
                 self.stats.record_read(data.len() as u64);
-                let bytes = Bytes::from(data);
-                self.hot_cache.insert(key.to_string(), bytes.clone());
-                let entry = CacheEntry::new_inline(key.to_string(), bytes.to_vec(), vec![], None);
-                return Ok(Some(entry));
+                self.hot_cache.insert(key.to_string(), data.clone());
+                Ok(Some(CacheEntry::new_inline(
+                    key.to_string(),
+                    data.to_vec(),
+                    vec![],
+                    None,
+                )))
             }
-
-            self.stats.record_miss();
-            Ok(None)
+            Some(IndexEntry::File(file_info)) => {
+                self.cold_index
+                    .write()
+                    .insert(key.to_string(), file_info.clone());
+                self.read_file_entry(key, file_info)
+            }
+            None => {
+                self.hot_cache.remove(key);
+                self.warm_cache.remove(key);
+                self.cold_index.write().remove(key);
+                self.stats.record_miss();
+                Ok(None)
+            }
         }
     }
 
@@ -803,6 +764,7 @@ impl StorageBackend for OptimizedStorage {
 
         let mut file_infos = Vec::new();
         let mut inline_entries = Vec::new();
+        let mut has_async_file_writes = false;
 
         for (key, data) in entries {
             let data_size = data.len();
@@ -838,6 +800,7 @@ impl StorageBackend for OptimizedStorage {
                 std::fs::write(&file_path, &compressed_data).map_err(CacheError::Io)?;
             } else {
                 self.write_batcher.write_async(file_path, compressed_data);
+                has_async_file_writes = true;
             }
 
             file_infos.push((key, file_info));
@@ -845,6 +808,9 @@ impl StorageBackend for OptimizedStorage {
 
         self.cleanup_hot_cache();
         self.persist_inline_entries(&inline_entries)?;
+        if has_async_file_writes {
+            self.write_batcher.sync();
+        }
         self.persist_file_infos(&file_infos)?;
 
         Ok(())
@@ -889,13 +855,6 @@ impl StorageBackend for OptimizedStorage {
     }
 
     fn exists(&self, key: &str) -> CacheResult<bool> {
-        if self.hot_cache.contains_key(key)
-            || self.warm_cache.contains_key(key)
-            || self.cold_index.read().contains_key(key)
-        {
-            return Ok(true);
-        }
-
         let conn = self.index_db.lock();
         let exists: Option<i32> = conn
             .query_row(
@@ -905,25 +864,10 @@ impl StorageBackend for OptimizedStorage {
             )
             .optional()
             .map_err(|e| Self::sqlite_error("Failed to check SQLite index entry", e))?;
-        Ok(exists.is_some() || self.build_file_path(key).exists())
+        Ok(exists.is_some())
     }
 
     fn keys(&self) -> CacheResult<Vec<String>> {
-        let mut keys = std::collections::HashSet::new();
-
-        // Collect from all levels
-        for entry in self.hot_cache.iter() {
-            keys.insert(entry.key().clone());
-        }
-
-        for entry in self.warm_cache.iter() {
-            keys.insert(entry.key().clone());
-        }
-
-        for entry in self.cold_index.read().iter() {
-            keys.insert(entry.key().clone());
-        }
-
         let conn = self.index_db.lock();
         let mut stmt = conn
             .prepare("SELECT key FROM cache_index")
@@ -931,11 +875,12 @@ impl StorageBackend for OptimizedStorage {
         let rows = stmt
             .query_map([], |row| row.get::<_, String>(0))
             .map_err(|e| Self::sqlite_error("Failed to iterate SQLite index keys", e))?;
+        let mut keys = Vec::new();
         for row in rows {
-            keys.insert(row.map_err(|e| Self::sqlite_error("Failed to read SQLite key", e))?);
+            keys.push(row.map_err(|e| Self::sqlite_error("Failed to read SQLite key", e))?);
         }
 
-        Ok(keys.into_iter().collect())
+        Ok(keys)
     }
 
     fn clear(&self) -> CacheResult<()> {
@@ -1036,8 +981,9 @@ impl OptimizedStorage {
                 // Large files or sync mode: write immediately
                 std::fs::write(&file_path, &compressed_data).map_err(CacheError::Io)?;
             } else {
-                // Async write for better performance
+                // Async write for better performance, then wait before publishing metadata.
                 self.write_batcher.write_async(file_path, compressed_data);
+                self.write_batcher.sync();
             }
 
             self.persist_file_infos(&[(key.to_string(), file_info)])?;

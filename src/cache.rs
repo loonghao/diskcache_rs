@@ -93,11 +93,9 @@ impl DiskCache {
         // Initialize optimized serializer (MessagePack with LZ4)
         let serializer = OptimizedSerializer;
 
-        // Enable memory cache for optimal performance
-        let memory_cache = Some(MemoryCache::new(
-            10_000,           // 10K entries
-            64 * 1024 * 1024, // 64MB
-        ));
+        // Cross-process correctness depends on the storage backend checking the
+        // persistent SQLite index as the source of truth.
+        let memory_cache = None;
 
         let mut cache = Self {
             config,
