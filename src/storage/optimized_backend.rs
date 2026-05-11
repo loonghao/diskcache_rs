@@ -18,8 +18,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const INDEX_TABLE_SQL: &str =
-    "CREATE TABLE IF NOT EXISTS cache_index (key TEXT PRIMARY KEY, value BLOB NOT NULL)";
+const INDEX_TABLE_SQL: &str = "CREATE TABLE IF NOT EXISTS cache_index (key TEXT PRIMARY KEY, value BLOB NOT NULL, generation INTEGER NOT NULL DEFAULT 0)";
 
 /// High-performance optimized storage backend with multiple performance enhancements:
 /// - Memory-mapped files for large data
@@ -33,7 +32,7 @@ pub struct OptimizedStorage {
     directory: PathBuf,
 
     // Multi-tier storage
-    hot_cache: Arc<DashMap<String, Bytes>>, // Frequently accessed data
+    hot_cache: Arc<DashMap<String, HotEntry>>, // Frequently accessed inline data
     warm_cache: Arc<DashMap<String, MmapEntry>>, // Memory-mapped files
     cold_index: Arc<RwLock<DashMap<String, FileInfo>>>, // File metadata (in-memory cache)
 
@@ -81,6 +80,12 @@ impl Default for StorageConfig {
     }
 }
 
+#[derive(Debug, Clone)]
+struct HotEntry {
+    data: Bytes,
+    generation: i64,
+}
+
 #[allow(dead_code)]
 #[derive(Debug)]
 struct MmapEntry {
@@ -100,7 +105,7 @@ struct FileInfo {
 }
 
 enum IndexEntry {
-    Inline(Bytes),
+    Inline(HotEntry),
     File(FileInfo),
 }
 
@@ -376,6 +381,31 @@ impl OptimizedStorage {
         }
         conn.execute(INDEX_TABLE_SQL, [])
             .map_err(|e| Self::sqlite_error("Failed to create SQLite index table", e))?;
+        Self::ensure_generation_column(conn)?;
+        Ok(())
+    }
+
+    fn ensure_generation_column(conn: &Connection) -> CacheResult<()> {
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(cache_index)")
+            .map_err(|e| Self::sqlite_error("Failed to inspect SQLite index schema", e))?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| Self::sqlite_error("Failed to query SQLite index schema", e))?;
+
+        for column in columns {
+            if column.map_err(|e| Self::sqlite_error("Failed to read SQLite index schema", e))?
+                == "generation"
+            {
+                return Ok(());
+            }
+        }
+
+        conn.execute(
+            "ALTER TABLE cache_index ADD COLUMN generation INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| Self::sqlite_error("Failed to add SQLite generation column", e))?;
         Ok(())
     }
 
@@ -391,11 +421,15 @@ impl OptimizedStorage {
     fn rebuild_index_from_disk(&mut self) -> CacheResult<()> {
         let conn = self.index_db.lock();
         let mut stmt = conn
-            .prepare("SELECT key, value FROM cache_index")
+            .prepare("SELECT key, value, generation FROM cache_index")
             .map_err(|e| Self::sqlite_error("Failed to query SQLite index", e))?;
         let rows = stmt
             .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Vec<u8>>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
             })
             .map_err(|e| Self::sqlite_error("Failed to iterate SQLite index", e))?;
 
@@ -404,7 +438,7 @@ impl OptimizedStorage {
         let mut skipped_count = 0;
 
         for row in rows {
-            let (key, value_bytes) =
+            let (key, value_bytes, generation) =
                 row.map_err(|e| Self::sqlite_error("Failed to read SQLite index row", e))?;
             let (file_info, decoded_len): (FileInfo, usize) =
                 bincode::decode_from_slice(value_bytes.as_slice(), bincode::config::standard())
@@ -417,8 +451,13 @@ impl OptimizedStorage {
 
             if file_info.path.to_string_lossy().starts_with("memory://") {
                 if value_bytes.len() > decoded_len {
-                    self.hot_cache
-                        .insert(key, Bytes::copy_from_slice(&value_bytes[decoded_len..]));
+                    self.hot_cache.insert(
+                        key,
+                        HotEntry {
+                            data: Bytes::copy_from_slice(&value_bytes[decoded_len..]),
+                            generation,
+                        },
+                    );
                     loaded_count += 1;
                 } else {
                     skipped_count += 1;
@@ -497,12 +536,20 @@ impl OptimizedStorage {
             .map_err(|e| Self::sqlite_error("Failed to begin SQLite transaction", e))?;
         {
             let mut stmt = tx
-                .prepare("INSERT OR REPLACE INTO cache_index (key, value) VALUES (?1, ?2)")
+                .prepare("INSERT OR REPLACE INTO cache_index (key, value, generation) VALUES (?1, ?2, ?3)")
                 .map_err(|e| Self::sqlite_error("Failed to prepare inline SQLite entry", e))?;
             for (key, data) in entries {
+                let generation = Self::new_generation();
                 let value_bytes = Self::encode_inline_entry(key, data)?;
-                stmt.execute(params![key.as_str(), value_bytes])
+                stmt.execute(params![key.as_str(), value_bytes, generation])
                     .map_err(|e| Self::sqlite_error("Failed to persist inline SQLite entry", e))?;
+                self.hot_cache.insert(
+                    key.clone(),
+                    HotEntry {
+                        data: data.clone(),
+                        generation,
+                    },
+                );
             }
         }
         tx.commit()
@@ -510,7 +557,7 @@ impl OptimizedStorage {
         Ok(())
     }
 
-    fn decode_index_entry(value_bytes: &[u8]) -> CacheResult<IndexEntry> {
+    fn decode_index_entry(value_bytes: &[u8], generation: i64) -> CacheResult<IndexEntry> {
         let (file_info, decoded_len): (FileInfo, usize) =
             bincode::decode_from_slice(value_bytes, bincode::config::standard()).map_err(|e| {
                 CacheError::Io(std::io::Error::other(format!(
@@ -525,29 +572,39 @@ impl OptimizedStorage {
                     "Inline SQLite entry is missing data bytes",
                 )));
             }
-            Ok(IndexEntry::Inline(Bytes::copy_from_slice(
-                &value_bytes[decoded_len..],
-            )))
+            Ok(IndexEntry::Inline(HotEntry {
+                data: Bytes::copy_from_slice(&value_bytes[decoded_len..]),
+                generation,
+            }))
         } else {
             Ok(IndexEntry::File(file_info))
         }
     }
 
+    fn read_index_generation(&self, key: &str) -> CacheResult<Option<i64>> {
+        let conn = self.index_db.lock();
+        conn.query_row(
+            "SELECT generation FROM cache_index WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| Self::sqlite_error("Failed to read SQLite index generation", e))
+    }
+
     fn read_index_entry(&self, key: &str) -> CacheResult<Option<IndexEntry>> {
         let conn = self.index_db.lock();
-        let value_bytes: Option<Vec<u8>> = conn
+        let row: Option<(Vec<u8>, i64)> = conn
             .query_row(
-                "SELECT value FROM cache_index WHERE key = ?1",
+                "SELECT value, generation FROM cache_index WHERE key = ?1",
                 params![key],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
             .map_err(|e| Self::sqlite_error("Failed to read SQLite index entry", e))?;
         drop(conn);
 
-        value_bytes
-            .as_deref()
-            .map(Self::decode_index_entry)
+        row.map(|(value_bytes, generation)| Self::decode_index_entry(&value_bytes, generation))
             .transpose()
     }
 
@@ -580,6 +637,16 @@ impl OptimizedStorage {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs()
+    }
+
+    fn new_generation() -> i64 {
+        let duration = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        duration
+            .as_secs()
+            .saturating_mul(1_000_000_000)
+            .saturating_add(u64::from(duration.subsec_nanos())) as i64
     }
 
     fn build_file_path(&self, key: &str) -> PathBuf {
@@ -621,7 +688,7 @@ impl OptimizedStorage {
 
         {
             let mut stmt = tx
-                .prepare("INSERT OR REPLACE INTO cache_index (key, value) VALUES (?1, ?2)")
+                .prepare("INSERT OR REPLACE INTO cache_index (key, value, generation) VALUES (?1, ?2, ?3)")
                 .map_err(|e| Self::sqlite_error("Failed to prepare SQLite file info", e))?;
             for (key, file_info) in file_infos {
                 let value_bytes = bincode::encode_to_vec(file_info, bincode::config::standard())
@@ -631,7 +698,7 @@ impl OptimizedStorage {
                             e
                         )))
                     })?;
-                stmt.execute(params![key.as_str(), value_bytes])
+                stmt.execute(params![key.as_str(), value_bytes, Self::new_generation()])
                     .map_err(|e| Self::sqlite_error("Failed to persist SQLite file info", e))?;
             }
         }
@@ -713,14 +780,33 @@ impl OptimizedStorage {
 
 impl StorageBackend for OptimizedStorage {
     fn get(&self, key: &str) -> CacheResult<Option<CacheEntry>> {
+        if let Some(entry) = self.hot_cache.get(key) {
+            match self.read_index_generation(key)? {
+                Some(generation) if generation == entry.generation => {
+                    self.stats.record_hot_hit();
+                    self.stats.record_read(entry.data.len() as u64);
+                    return Ok(Some(CacheEntry::new_inline(
+                        key.to_string(),
+                        entry.data.to_vec(),
+                        vec![],
+                        None,
+                    )));
+                }
+                _ => {
+                    drop(entry);
+                    self.hot_cache.remove(key);
+                }
+            }
+        }
+
         match self.read_index_entry(key)? {
-            Some(IndexEntry::Inline(data)) => {
+            Some(IndexEntry::Inline(entry)) => {
                 self.stats.record_hot_hit();
-                self.stats.record_read(data.len() as u64);
-                self.hot_cache.insert(key.to_string(), data.clone());
+                self.stats.record_read(entry.data.len() as u64);
+                self.hot_cache.insert(key.to_string(), entry.clone());
                 Ok(Some(CacheEntry::new_inline(
                     key.to_string(),
-                    data.to_vec(),
+                    entry.data.to_vec(),
                     vec![],
                     None,
                 )))
@@ -775,9 +861,7 @@ impl StorageBackend for OptimizedStorage {
             self.remove_existing_persisted_entry(&key)?;
 
             if data_size < self.config.disk_write_threshold {
-                let bytes = Bytes::from(data);
-                inline_entries.push((key.clone(), bytes.clone()));
-                self.hot_cache.insert(key, bytes);
+                inline_entries.push((key, Bytes::from(data)));
                 continue;
             }
 
@@ -954,8 +1038,7 @@ impl OptimizedStorage {
 
         if data_size < self.config.disk_write_threshold {
             let bytes = Bytes::copy_from_slice(data);
-            self.persist_inline_entries(&[(key.to_string(), bytes.clone())])?;
-            self.hot_cache.insert(key.to_string(), bytes);
+            self.persist_inline_entries(&[(key.to_string(), bytes)])?;
             self.cleanup_hot_cache();
         } else {
             // Large data: compress and store to disk (>= disk_write_threshold)

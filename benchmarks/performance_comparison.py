@@ -198,6 +198,23 @@ def benchmark_large_values(cache_dir, implementation="diskcache", operations=100
     return results
 
 
+def calculate_weighted_ops(benchmark_name, result):
+    """Calculate weighted throughput for the benchmark's operation mix."""
+    weights = (
+        {"get": 0.89, "set": 0.10, "delete": 0.01}
+        if "Standard Workload" in benchmark_name
+        else {"set": 0.50, "get": 0.50}
+    )
+    total = 0.0
+    total_weight = 0.0
+    for operation, weight in weights.items():
+        op_result = result.get(operation)
+        if op_result:
+            total += op_result["ops_per_sec"] * weight
+            total_weight += weight
+    return total / total_weight if total_weight else 0.0
+
+
 def run_benchmarks(test_dir):
     """Run all benchmarks following diskcache methodology"""
 
@@ -234,6 +251,10 @@ def run_benchmarks(test_dir):
         results[benchmark_name] = {
             "diskcache": diskcache_result,
             "diskcache_rs": diskcache_rs_result,
+            "weighted_ops_per_sec": {
+                "diskcache": calculate_weighted_ops(benchmark_name, diskcache_result),
+                "diskcache_rs": calculate_weighted_ops(benchmark_name, diskcache_rs_result),
+            },
         }
 
         # Print detailed comparison
@@ -308,6 +329,19 @@ def print_summary(results):
     for benchmark_name, result in results.items():
         dc_result = result["diskcache"]
         rs_result = result["diskcache_rs"]
+        weighted = result.get("weighted_ops_per_sec", {})
+        dc_weighted = weighted.get("diskcache", 0.0)
+        rs_weighted = weighted.get("diskcache_rs", 0.0)
+        if dc_weighted or rs_weighted:
+            winner = (
+                f"diskcache ({dc_weighted / rs_weighted:.1f}x)"
+                if dc_weighted > rs_weighted
+                else f"diskcache_rs ({rs_weighted / dc_weighted:.1f}x)"
+            )
+            bench_short = benchmark_name.split("(")[0].strip()
+            print(
+                f"{bench_short:<25} {'weighted':<8} {dc_weighted:>12.1f} ops/s {rs_weighted:>12.1f} ops/s {winner}"
+            )
 
         for operation in ["get", "set", "delete"]:
             if operation in dc_result and operation in rs_result:
