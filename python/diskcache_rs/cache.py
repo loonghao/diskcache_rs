@@ -21,6 +21,8 @@ except ImportError:
 
 # We'll import the Rust implementation at runtime to avoid circular imports
 _RustCache = None
+_RAW_BYTES_PREFIX = b"\x00diskcache_rs:bytes\x00"
+_PICKLE_PREFIX = b"\x00diskcache_rs:pickle\x00"
 
 
 def _get_rust_cache():
@@ -124,7 +126,7 @@ class Cache:
                 value = value.read()
 
             # Serialize the value
-            serialized_value = pickle.dumps(value)
+            serialized_value = self._serialize_value(value)
 
             # Calculate expiration time
             expire_time = None
@@ -180,7 +182,7 @@ class Cache:
 
             serialized_items = []
             for key, value in normalized_items:
-                serialized_items.append((str(key), pickle.dumps(value)))
+                serialized_items.append((str(key), self._serialize_value(value)))
 
             tags = [tag] if tag else []
             self._cache.set_many(serialized_items, expire_time=expire_time, tags=tags)
@@ -201,6 +203,11 @@ class Cache:
         except Exception:
             return 0
 
+    def _serialize_value(self, value: Any) -> bytes:
+        if type(value) is bytes:
+            return _RAW_BYTES_PREFIX + value
+        return _PICKLE_PREFIX + pickle.dumps(value)
+
     def _auto_deserialize(self, data: bytes) -> Any:
 
         """
@@ -217,7 +224,13 @@ class Cache:
         Returns:
             Deserialized value
         """
-        # Try pickle first (most common)
+        if data.startswith(_RAW_BYTES_PREFIX):
+            return data[len(_RAW_BYTES_PREFIX) :]
+
+        if data.startswith(_PICKLE_PREFIX):
+            return pickle.loads(data[len(_PICKLE_PREFIX) :])
+
+        # Try pickle first (legacy format)
         try:
             return pickle.loads(data)
         except Exception:
