@@ -108,7 +108,7 @@ class TestBatchOperations:
     def test_overwrite_large_value_with_small_value_removes_stale_disk_file(self):
         """Overwriting a disk-backed value with a memory-backed value should not leave stale files."""
         with tempfile.TemporaryDirectory(prefix="diskcache_rs_overwrite_") as cache_dir:
-            cache = Cache(cache_dir)
+            cache = Cache(cache_dir, disk_write_threshold=1024)
             large_value = b"a" * 4096
             small_value = b"b" * 128
 
@@ -132,7 +132,7 @@ class TestBatchOperations:
     def test_set_many_overwrite_removes_stale_disk_file(self):
         """Batch overwrite should clean up old disk files when the new value stays in memory."""
         with tempfile.TemporaryDirectory(prefix="diskcache_rs_batch_overwrite_") as cache_dir:
-            cache = Cache(cache_dir)
+            cache = Cache(cache_dir, disk_write_threshold=1024)
             cache.set("same-key", b"a" * 4096)
             cache.vacuum()
 
