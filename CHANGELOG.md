@@ -4,6 +4,23 @@
 
 - sync Cargo.toml version with .cz.toml and update CHANGELOG for v0.4.0
 
+## [0.4.11](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.10...diskcache_rs-v0.4.11) (2026-05-12)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate lru to 0.18 ([0c0138f](https://github.com/loonghao/diskcache_rs/commit/0c0138f65f4b6d16cd664db6720f927211e10a3f))
+* optimize sqlite inline cache index ([5a885ba](https://github.com/loonghao/diskcache_rs/commit/5a885bafa8c5b0a7653773a94f32232dc0dfd3af))
+* strengthen sqlite multiprocess consistency ([e121661](https://github.com/loonghao/diskcache_rs/commit/e121661cc1e6d8d54f7670bd471c3da4e776fb47))
+* support django cache and multiprocess opens ([044f244](https://github.com/loonghao/diskcache_rs/commit/044f244b817d4db5ec3fd13cdfbac21f184ac032))
+
+
+### Performance Improvements
+
+* avoid pickling bytes values ([b081349](https://github.com/loonghao/diskcache_rs/commit/b081349082265683b891a96dff23258849c273bc))
+* keep medium values inline ([62ed5e7](https://github.com/loonghao/diskcache_rs/commit/62ed5e7f986b6d52887e00c61441ee1d01150235))
+* restore sqlite hot-read path ([2da51ee](https://github.com/loonghao/diskcache_rs/commit/2da51ee478f631941a57c344805db40495f07386))
+
 ## [0.4.10](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.9...diskcache_rs-v0.4.10) (2026-04-15)
 
 
