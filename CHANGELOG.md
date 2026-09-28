@@ -4,6 +4,19 @@
 
 - sync Cargo.toml version with .cz.toml and update CHANGELOG for v0.4.0
 
+## [0.4.12](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.11...diskcache_rs-v0.4.12) (2026-09-28)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate pyo3 to 0.29 ([2e355aa](https://github.com/loonghao/diskcache_rs/commit/2e355aabf3b78b83db404335d75babef4e56e689))
+* **deps:** update rust crate rusqlite to 0.40 ([44b3a65](https://github.com/loonghao/diskcache_rs/commit/44b3a6531a41266101abef4eda4d77671339fa42))
+
+
+### Documentation
+
+* add AGENTS.md agent contract ([#146](https://github.com/loonghao/diskcache_rs/issues/146)) ([d6d10bb](https://github.com/loonghao/diskcache_rs/commit/d6d10bb39707f599c722b3302eec7b9da35b905e))
+
 ## [0.4.11](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.10...diskcache_rs-v0.4.11) (2026-05-12)
 
 
