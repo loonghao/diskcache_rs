@@ -142,7 +142,7 @@ impl EvictionPolicy for LfuEviction {
         let frequency_order = self.frequency_order.read();
         let mut victims = Vec::new();
 
-        for (_, keys) in frequency_order.iter() {
+        for keys in frequency_order.values() {
             for key in keys {
                 if victims.len() >= count {
                     break;
