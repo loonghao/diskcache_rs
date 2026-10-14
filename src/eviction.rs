@@ -101,13 +101,15 @@ impl EvictionPolicy for LfuEviction {
         let old_freq = key_to_frequency.get(key).copied().unwrap_or(0);
         let new_freq = entry.access_count;
 
-        // Remove from old frequency bucket
-        if old_freq > 0 {
-            if let Some(bucket) = frequency_order.get_mut(&old_freq) {
-                bucket.retain(|k| k != key);
-                if bucket.is_empty() {
-                    frequency_order.remove(&old_freq);
-                }
+        // Remove from old frequency bucket. This must run unconditionally: a
+        // key inserted with access_count == 0 lives in bucket 0, so guarding on
+        // `old_freq > 0` would leave a stale copy behind and make
+        // `select_victims` return the same key twice. For a brand new key the
+        // lookup simply misses and this is a no-op.
+        if let Some(bucket) = frequency_order.get_mut(&old_freq) {
+            bucket.retain(|k| k != key);
+            if bucket.is_empty() {
+                frequency_order.remove(&old_freq);
             }
         }
 
@@ -436,5 +438,114 @@ impl EvictionPolicy for CombinedEviction {
         self.lfu.clear();
         self.ttl.clear();
         self.least_recently_stored.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a cache entry carrying an explicit access count.
+    fn entry_with_access_count(key: &str, access_count: u64) -> CacheEntry {
+        let mut entry = CacheEntry::new_inline(key.to_string(), b"value".to_vec(), vec![], None);
+        entry.access_count = access_count;
+        entry
+    }
+
+    /// A key must never appear twice in `select_victims`, even after it is
+    /// promoted out of the frequency-0 bucket.
+    #[test]
+    fn select_victims_has_no_duplicate_keys_after_frequency_zero_promotion() {
+        let policy = LfuEviction::new();
+
+        // Insert lands the key in the frequency-0 bucket (access_count == 0).
+        policy.on_insert("a", &entry_with_access_count("a", 0));
+        // A later access promotes it out of bucket 0 into bucket 1.
+        policy.on_access("a", &entry_with_access_count("a", 1));
+
+        let victims = policy.select_victims(10);
+
+        let unique: std::collections::HashSet<_> = victims.iter().collect();
+        assert_eq!(
+            unique.len(),
+            victims.len(),
+            "same key selected more than once: {victims:?}"
+        );
+        assert_eq!(victims, vec!["a".to_string()]);
+    }
+
+    /// Victims are ordered by ascending frequency, with the least frequently
+    /// used keys evicted first.
+    #[test]
+    fn select_victims_orders_by_ascending_frequency() {
+        let policy = LfuEviction::new();
+
+        policy.on_insert("low", &entry_with_access_count("low", 0));
+        policy.on_insert("mid", &entry_with_access_count("mid", 3));
+        policy.on_insert("high", &entry_with_access_count("high", 7));
+
+        let victims = policy.select_victims(10);
+
+        assert_eq!(
+            victims,
+            vec!["low".to_string(), "mid".to_string(), "high".to_string()],
+            "expected victims ordered by ascending frequency"
+        );
+    }
+
+    /// Promotion must move a key between buckets, not copy it, so the number of
+    /// selectable victims still matches the number of tracked keys.
+    #[test]
+    fn select_victims_count_after_promotion_matches_tracked_keys() {
+        let policy = LfuEviction::new();
+
+        for key in ["a", "b", "c"] {
+            policy.on_insert(key, &entry_with_access_count(key, 0));
+        }
+        // Promote "a" and "b" out of the frequency-0 bucket.
+        policy.on_access("a", &entry_with_access_count("a", 1));
+        policy.on_access("b", &entry_with_access_count("b", 2));
+
+        // Three keys are tracked, so three distinct victims must be available.
+        let victims = policy.select_victims(3);
+        assert_eq!(
+            victims.len(),
+            3,
+            "expected 3 distinct victims, got {victims:?}"
+        );
+
+        let unique: std::collections::HashSet<_> = victims.iter().collect();
+        assert_eq!(unique.len(), 3, "duplicate victims returned: {victims:?}");
+    }
+
+    /// `select_victims` never returns more keys than requested.
+    #[test]
+    fn select_victims_respects_requested_count() {
+        let policy = LfuEviction::new();
+
+        for key in ["a", "b", "c", "d"] {
+            policy.on_insert(key, &entry_with_access_count(key, 0));
+        }
+
+        assert_eq!(policy.select_victims(0).len(), 0);
+        assert_eq!(policy.select_victims(2).len(), 2);
+        assert_eq!(policy.select_victims(10).len(), 4);
+    }
+
+    /// A repeated access at an unchanged frequency must not duplicate the key.
+    #[test]
+    fn repeated_access_at_same_frequency_does_not_duplicate_key() {
+        let policy = LfuEviction::new();
+
+        policy.on_insert("a", &entry_with_access_count("a", 2));
+        policy.on_access("a", &entry_with_access_count("a", 2));
+        policy.on_access("a", &entry_with_access_count("a", 2));
+
+        let victims = policy.select_victims(10);
+        assert_eq!(
+            victims,
+            vec!["a".to_string()],
+            "repeated access must not duplicate the key in its bucket"
+        );
     }
 }
