@@ -12,7 +12,7 @@ use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,6 +48,9 @@ pub struct OptimizedStorage {
 
     // Statistics
     stats: Arc<StorageStats>,
+
+    // Prevent close and drop from persisting the index twice.
+    closed: AtomicBool,
 }
 
 #[derive(Clone)]
@@ -349,6 +352,7 @@ impl OptimizedStorage {
             write_batcher,
             config,
             stats: Arc::new(StorageStats::default()),
+            closed: AtomicBool::new(false),
         };
 
         // Load existing index from SQLite
@@ -484,10 +488,32 @@ impl OptimizedStorage {
 
     /// Close background resources and flush in-memory data.
     pub fn close_db(&self) {
+        if self.closed.swap(true, Ordering::AcqRel) {
+            return;
+        }
+
         self.write_batcher.shutdown();
 
         if let Err(e) = self.flush_memory_caches() {
             tracing::error!("Failed to flush memory caches during close: {}", e);
+        }
+
+        if let Err(e) = self.persist_index() {
+            tracing::error!("Failed to persist SQLite index during close: {}", e);
+        }
+
+        // rusqlite keeps the SQLite file handle in the Connection value. Replace
+        // it with an in-memory connection so the original database is dropped
+        // while the Python cache is being closed, including on Windows.
+        match Connection::open_in_memory() {
+            Ok(in_memory_connection) => {
+                let mut connection = self.index_db.lock();
+                let file_connection = std::mem::replace(&mut *connection, in_memory_connection);
+                drop(file_connection);
+            }
+            Err(e) => {
+                tracing::error!("Failed to release SQLite index during close: {}", e);
+            }
         }
     }
 
@@ -1141,9 +1167,11 @@ impl OptimizedStorage {
 
 impl Drop for OptimizedStorage {
     fn drop(&mut self) {
-        self.write_batcher.shutdown();
-        // Ensure index is persisted when storage is dropped
-        let _ = self.persist_index();
+        if !self.closed.load(Ordering::Acquire) {
+            self.write_batcher.shutdown();
+            // Ensure index is persisted when storage is dropped
+            let _ = self.persist_index();
+        }
     }
 }
 
