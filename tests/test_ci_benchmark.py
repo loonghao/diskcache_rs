@@ -23,7 +23,9 @@ class TestCIBenchmarks:
     def cache(self, temp_cache_dir):
         """Create a cache instance"""
         cache_dir = os.path.join(temp_cache_dir, "test_cache")
-        return Cache(cache_dir)
+        cache = Cache(cache_dir)
+        yield cache
+        cache.close()
 
     def test_benchmark_basic_operations(self, benchmark, cache):
         """Basic benchmark test for CI"""

@@ -29,6 +29,7 @@ class TestSpecialCharKeys:
 
             assert result == value
             assert key in cache
+            cache.close()
 
     def test_key_with_slash(self):
         """Test keys containing forward slash"""
@@ -44,6 +45,7 @@ class TestSpecialCharKeys:
 
             assert result == value
             assert key in cache
+            cache.close()
 
     def test_key_with_backslash(self):
         """Test keys containing backslash"""
@@ -59,6 +61,7 @@ class TestSpecialCharKeys:
 
             assert result == value
             assert key in cache
+            cache.close()
 
     def test_key_with_dot(self):
         """Test keys containing dot character"""
@@ -74,6 +77,7 @@ class TestSpecialCharKeys:
 
             assert result == value
             assert key in cache
+            cache.close()
 
     def test_key_with_multiple_special_chars(self):
         """Test keys with multiple special characters"""
@@ -98,6 +102,7 @@ class TestSpecialCharKeys:
                 result = cache.get(key)
                 assert result == value, f"Failed for key: {key}"
                 assert key in cache
+            cache.close()
 
     def test_url_as_key(self):
         """Test using URLs as cache keys"""
@@ -117,6 +122,7 @@ class TestSpecialCharKeys:
 
             assert result == response_data
             assert url in cache
+            cache.close()
 
 
 class TestAutoDeserialization:
@@ -133,6 +139,7 @@ class TestAutoDeserialization:
             result = cache.get("test_key")
 
             assert result == value
+            cache.close()
 
     def test_json_deserialization(self):
         """Test automatic JSON deserialization"""
@@ -149,6 +156,7 @@ class TestAutoDeserialization:
             # Should auto-deserialize JSON
             result = cache.get("json_key")
             assert result == json_data
+            cache.close()
 
     def test_text_deserialization(self):
         """Test automatic text deserialization"""
@@ -165,6 +173,7 @@ class TestAutoDeserialization:
             # Should auto-deserialize to text
             result = cache.get("text_key")
             assert result == text
+            cache.close()
 
     def test_mixed_formats(self):
         """Test cache with mixed serialization formats"""
@@ -180,3 +189,4 @@ class TestAutoDeserialization:
             assert cache.get("pickle_key") == {"type": "pickle"}
             assert cache.get("json_key") == {"type": "json"}
             assert cache.get("text_key") == "plain text"
+            cache.close()

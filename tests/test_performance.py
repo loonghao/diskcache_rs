@@ -266,7 +266,9 @@ class TestOfficialBenchmarks:
     def rust_cache(self, temp_cache_dir):
         """Create a Rust cache instance"""
         cache_dir = os.path.join(temp_cache_dir, "rust_cache")
-        return RustCache(cache_dir)
+        cache = RustCache(cache_dir)
+        yield cache
+        cache.close()
 
     @pytest.fixture
     def python_cache(self, temp_cache_dir):
@@ -373,7 +375,9 @@ class TestBenchmarks:
     def rust_cache(self, temp_cache_dir):
         """Create a Rust cache instance"""
         cache_dir = os.path.join(temp_cache_dir, "rust_cache")
-        return RustCache(cache_dir)
+        cache = RustCache(cache_dir)
+        yield cache
+        cache.close()
 
     @pytest.fixture
     def python_cache(self, temp_cache_dir):
