@@ -4,6 +4,13 @@
 
 - sync Cargo.toml version with .cz.toml and update CHANGELOG for v0.4.0
 
+## [0.4.13](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.12...diskcache_rs-v0.4.13) (2026-11-27)
+
+
+### Bug Fixes
+
+* repair v0.4.12 release pipeline ([8e05833](https://github.com/loonghao/diskcache_rs/commit/8e058333a20659e067a4b1f127e50334c4064fd0))
+
 ## [0.4.12](https://github.com/loonghao/diskcache_rs/compare/diskcache_rs-v0.4.11...diskcache_rs-v0.4.12) (2026-10-14)
 
 
