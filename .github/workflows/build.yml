@@ -70,7 +70,7 @@ jobs:
             if [ "$attempt" = "3" ]; then exit 1; fi
             sleep $((attempt * 5))
           done
-      - uses: uraimo/run-on-arch-action@v3.1.0
+      - uses: uraimo/run-on-arch-action@v3.3
         if: matrix.target != 'ppc64le'
         name: Install built wheel
         with:
@@ -165,7 +165,7 @@ jobs:
             if [ "$attempt" = "3" ]; then exit 1; fi
             sleep $((attempt * 5))
           done
-      - uses: uraimo/run-on-arch-action@v3.1.0
+      - uses: uraimo/run-on-arch-action@v3.3
         name: Install built wheel
         with:
           arch: ${{ matrix.platform.arch }}
